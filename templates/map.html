@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Leaflet Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map {
+      position: absolute;
+	    top:0; left:0; right:0; bottom:0;
+    }
+    .button-container {
+      position: absolute;
+      z-index: 1000;
+    }
+    .custom-button {
+      padding: 10px 20px;
+      background-color: #f0f0f0; /* クリック前の背景色 */
+      border: 1px solid #000;
+      border-radius: 4px;
+      transition: background-color 0.2s ease; /* 背景色のトランジション */
+    }
+    .custom-button:hover {
+      background-color: #d0d0d0; /* ホバー時の背景色 */
+    }
+    .custom-button:active {
+      background-color: #a0a0a0; /* クリック時の背景色 */
+    }
+    .button-top-left {
+      top: 10px;
+      right: 10px;
+    }
+    .button-top-right {
+      top: 60px;
+      right: 10px;
+    }
+    .button-bottom-left {
+      top: 110px;
+      right: 10px;
+    }
+    .button-bottom-right {
+      top: 160px;
+      right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="button-container button-top-left">
+    <button id="button1" class="custom-button">経路表示</button>
+  </div>
+  <div class="button-container button-top-right">
+    <button id="button2" class="custom-button">Button 2</button>
+  </div>
+  <div class="button-container button-bottom-left">
+    <button id="button3" class="custom-button">Button 3</button>
+  </div>
+  <div class="button-container button-bottom-right">
+    <button id="button4" class="custom-button">Button 4</button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    var mapElement = document.getElementById('map');
+
+    // 初期座標
+    var center = [35.16066808015237, 136.92640764889583];
+    // 初期ズームレベル
+    var zoom_level = 14;
+
+    var map = L.map(mapElement).setView(center, zoom_level);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+      maxZoom: 18
+    }).addTo(map);
+
+    var points = [];
+    var n = 2;
+
+    // マウスクリックで緯度経度の取得とマーカー設置
+    function onMapClick(e) {
+        marker = L.marker(e.latlng).addTo(map);
+        console.log(e.latlng);
+        var a = [e.latlng.lat, e.latlng.lng];
+        points.push([e.latlng.lat, e.latlng.lng]);
+
+        // n点がクリックされたとき
+        if (points.length === n) {
+            // リクエストデータを作成
+            var requestData = {
+                points: points
+            };
+
+            // AjaxリクエストでデータをPythonに送信
+            $.ajax({
+                url: '/process_ajax',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(requestData),
+                success: function(response) {
+                    var path = response.path;
+                    // 経路を表示
+                    //polyline = L.polyline(path, { color: 'red' }).addTo(map);
+                    polyline = L.polyline(path, { color: 'red' })
+                    points = [];
+                }
+            });
+        }
+    }
+    map.on('click', onMapClick);
+
+    // ボタン1のクリックイベント
+    $('#button1').click(function() {
+      if(polyline) {
+        polyline.addTo(map);
+      }
+      sendAjaxRequest('button1');
+    });
+
+    // ボタン2のクリックイベント
+    $('#button2').click(function() {
+      sendAjaxRequest('button2');
+    });
+
+    // ボタン3のクリックイベント
+    $('#button3').click(function() {
+      sendAjaxRequest('button3');
+    });
+
+    // ボタン4のクリックイベント
+    $('#button4').click(function() {
+      sendAjaxRequest('button4');
+    });
+
+    // Ajaxリクエストの送信
+    function sendAjaxRequest(buttonId) {
+      // リクエストデータを作成
+      var requestData = {
+        buttonId: buttonId
+      };
+
+      // AjaxリクエストでデータをPythonに送信
+      $.ajax({
+        url: '/process_ajax',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(requestData),
+        success: function(response) {
+          // レスポンスの処理
+          console.log(response);
+        },
+        error: function(error) {
+          // エラーの処理
+          console.log(error);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
