@@ -23,10 +23,10 @@ def process_ajax():
         Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        path = pathSearch.shortestPath(points[0], points[1], Db.link, Db.length)
+        #path = pathSearch.shortestPath(points[0], points[1], Db.link, Db.length)
         #path = pathSearch.MST(Db.link, Db.length)
         #path = pathSearch.steiner(points, Db.link, Db.length)
-        #path = pathSearch.traveling(points, Db.link, Db.length)
+        path = pathSearch.traveling(points, Db.link, Db.length)
   
         return jsonify({'path': path})
     

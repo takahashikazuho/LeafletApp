@@ -6,7 +6,10 @@
   <style>
     #map {
       position: absolute;
-	    top:0; left:0; right:0; bottom:0;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
     }
     .button-container {
       position: absolute;
@@ -14,48 +17,28 @@
     }
     .custom-button {
       padding: 10px 20px;
-      background-color: #f0f0f0; /* クリック前の背景色 */
+      background-color: #fff;
       border: 1px solid #000;
       border-radius: 4px;
-      transition: background-color 0.2s ease; /* 背景色のトランジション */
+      transition: background-color 0.2s ease;
     }
     .custom-button:hover {
       background-color: #d0d0d0; /* ホバー時の背景色 */
     }
-    .custom-button:active {
-      background-color: #a0a0a0; /* クリック時の背景色 */
+    .custom-button.active {
+      background-color: #a0a0a0; /* 押され続けているときの背景色 */
     }
-    .button-top-left {
+    .button-container.button-top-right {
       top: 10px;
-      right: 10px;
-    }
-    .button-top-right {
-      top: 60px;
-      right: 10px;
-    }
-    .button-bottom-left {
-      top: 110px;
-      right: 10px;
-    }
-    .button-bottom-right {
-      top: 160px;
+      left: auto;
       right: 10px;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="button-container button-top-left">
-    <button id="button1" class="custom-button">経路表示</button>
-  </div>
   <div class="button-container button-top-right">
-    <button id="button2" class="custom-button">Button 2</button>
-  </div>
-  <div class="button-container button-bottom-left">
-    <button id="button3" class="custom-button">Button 3</button>
-  </div>
-  <div class="button-container button-bottom-right">
-    <button id="button4" class="custom-button">Button 4</button>
+    <button id="button1" class="custom-button">経路表示</button>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -75,7 +58,7 @@
     }).addTo(map);
 
     var points = [];
-    var n = 2;
+    var button1Active = false;
 
     // マウスクリックで緯度経度の取得とマーカー設置
     function onMapClick(e) {
@@ -83,53 +66,38 @@
         console.log(e.latlng);
         var a = [e.latlng.lat, e.latlng.lng];
         points.push([e.latlng.lat, e.latlng.lng]);
-
-        // n点がクリックされたとき
-        if (points.length === n) {
-            // リクエストデータを作成
-            var requestData = {
-                points: points
-            };
-
-            // AjaxリクエストでデータをPythonに送信
-            $.ajax({
-                url: '/process_ajax',
-                type: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify(requestData),
-                success: function(response) {
-                    var path = response.path;
-                    // 経路を表示
-                    //polyline = L.polyline(path, { color: 'red' }).addTo(map);
-                    polyline = L.polyline(path, { color: 'red' })
-                    points = [];
-                }
-            });
-        }
     }
     map.on('click', onMapClick);
 
     // ボタン1のクリックイベント
     $('#button1').click(function() {
-      if(polyline) {
-        polyline.addTo(map);
+      button1Active = !button1Active; // 状態を反転させる
+
+      if (button1Active) {
+        $(this).addClass('active'); // ボタンが押されている表示にする
+        var requestData = {
+                points: points
+            };
+        $.ajax({
+            url: '/process_ajax',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(requestData),
+            success: function(response) {
+                var path = response.path;
+                // 経路を表示
+                polyline = L.polyline(path, { color: 'red' })
+                polyline.addTo(map);
+                //points = [];
+            }
+        });
+
+      } else {
+        $(this).removeClass('active'); // ボタンが押されていない表示にする
+        if (polyline) {
+          map.removeLayer(polyline); // polyline を地図から削除
+        }
       }
-      sendAjaxRequest('button1');
-    });
-
-    // ボタン2のクリックイベント
-    $('#button2').click(function() {
-      sendAjaxRequest('button2');
-    });
-
-    // ボタン3のクリックイベント
-    $('#button3').click(function() {
-      sendAjaxRequest('button3');
-    });
-
-    // ボタン4のクリックイベント
-    $('#button4').click(function() {
-      sendAjaxRequest('button4');
     });
 
     // Ajaxリクエストの送信
