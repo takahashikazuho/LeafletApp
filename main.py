@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def leafletMap():
-    return render_template("map.html")
+    return render_template("index.html")
 
 @app.route('/process_ajax', methods=['POST'])
 def process_ajax():
@@ -16,6 +16,13 @@ def process_ajax():
         #リクエストからデータを取得
         data = request.get_json()  
         points = data['points']
+        startPoint = data['startPoint']
+        endPoint = data['endPoint']
+
+        if startPoint:
+            points.append(startPoint)
+        if endPoint:
+            points.append(endPoint)
 
         #データベースから道路データを取得
         Db = db.yamamotoDb()
@@ -34,5 +41,5 @@ def process_ajax():
         return jsonify({'message': 'Invalid request method'})
     
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=80)
+    app.run(host="133.68.17.14",port=80)
 
