@@ -27,32 +27,34 @@ var points = [];
 var startPoint = [];
 var endPoint = [];
 var markerType = "start";
-var startMarker;
-var endMarker;
+var startMarkerFlag = false;
+var endMarkerFlag = false;
 var button1Active = false;
 
 // マウスクリックで緯度経度の取得とマーカー設置
 function onMapClick(e) {
   switch(markerType) {
     case "start":
-      if(startMarker) {
-        map.removeLayer(startMarker);
+      if(startMarkerFlag) {
+        break;
       }
       startMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onStartMarkerClick).addTo(map)
                       .bindPopup('出発地点',{autoClose:false}).openPopup();
       startPoint = [e.latlng.lat, e.latlng.lng];
+      startMarkerFlag = true;
       break;
     case "location":
       L.marker(e.latlng).on('click', onMarkerClick).addTo(map);
       points.push([e.latlng.lat, e.latlng.lng]);
       break;
     case "end":
-      if(endMarker) {
-          map.removeLayer(endMarker);
+      if(endMarkerFlag) {
+          break;
         }
         endMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onEndMarkerClick).addTo(map)
                       .bindPopup('到着地点',{autoClose:false}).openPopup();
         endPoint = [e.latlng.lat, e.latlng.lng];
+        endMarkerFlag = true;
       break;
     default:
       break;
@@ -74,11 +76,13 @@ function onMarkerClick(e) {
 function onStartMarkerClick(e) {
   startPoint = [];
   map.removeLayer(e.target);
+  startMarkerFlag = false;
 }
 
 function onEndMarkerClick(e) {
   endPoint = [];
   map.removeLayer(e.target);
+  endMarkerFlag = false;
 }
 
 // ボタン1のクリックイベント
