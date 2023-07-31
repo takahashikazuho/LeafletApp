@@ -85,6 +85,7 @@ function onEndMarkerClick(e) {
   endMarkerFlag = false;
 }
 
+const button1Text = document.getElementById('button1Text');
 // ボタン1のクリックイベント
 $('#button1').click(function() {
   button1Active = !button1Active; // 状態を反転させる
@@ -103,17 +104,21 @@ $('#button1').click(function() {
         data: JSON.stringify(requestData),
         success: function(response) {
             var path = response.path;
+            var len = response.len;
             // 経路を表示
             polyline = L.polyline(path, { color: 'red' })
             polyline.addTo(map);
+            var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
+            button1Text.textContent = '経路長：'+len_round+'km';
+            $('#button1Text').removeClass('hidden');
         }
     });
-
   } else {
     $(this).removeClass('active'); // ボタンが押されていない表示にする
     if (polyline) {
       map.removeLayer(polyline); // polyline を地図から削除
     }
+    $('#button1Text').addClass('hidden');
   }
 });
 

@@ -33,9 +33,9 @@ def process_ajax():
         #path = pathSearch.shortestPath(points[0], points[1], Db.link, Db.length)
         #path = pathSearch.MST(Db.link, Db.length)
         #path = pathSearch.steiner(points, Db.link, Db.length)
-        path = pathSearch.traveling(points, Db.link, Db.length)
+        path, len = pathSearch.traveling(points, Db.link, Db.length)
   
-        return jsonify({'path': path})
+        return jsonify({'path': path, 'len': len})
     
     else:
         return jsonify({'message': 'Invalid request method'})

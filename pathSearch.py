@@ -139,8 +139,10 @@ def traveling(points, link, length):
 
     #巡回順に最短経路を求めて返却
     paths = []
+    length = 0
     for i in range(len(tsp)-1):
         path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
+        length += nx.dijkstra_path_length(G_temp, tsp[i], tsp[i+1])
         for line in path_str:
             paths.append([float(x) for x in line.strip('[]').split(',')])
-    return paths
+    return paths, length
