@@ -26,7 +26,7 @@ const redIcon = L.icon({
 var points = [];
 var startPoint = [];
 var endPoint = [];
-var markerType = "start";
+var markerType = "location";
 var startMarkerFlag = false;
 var endMarkerFlag = false;
 var button1Active = false;
@@ -86,8 +86,8 @@ function onEndMarkerClick(e) {
 }
 
 const button1Text = document.getElementById('button1Text');
-// ボタン1のクリックイベント
-$('#button1').click(function() {
+// 巡回経路探索ボタンのクリックイベント
+$('#btn_TSP').click(function() {
   button1Active = !button1Active; // 状態を反転させる
 
   if (button1Active) {

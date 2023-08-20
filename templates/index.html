@@ -7,25 +7,29 @@
 </head>
 <body>
   <div id="map"></div>
-  <div class="button-container button-top-right">
-    <button id="button1" class="custom-button">経路表示</button>
-    <p id="button1Text" class="hidden"></p>
+  <div class="btn-flex">
+    <div class="btn mamListBox">
+      <a href="javascript:void(0)">
+        <div>経由地点指定</div>
+      </a>
+      <select size="3" data-role="none">
+        <option value="location">経由地点指定</option>
+        <option value="start">出発地点指定</option>
+        <option value="end">到着地点指定</option>
+      </select>
+    </div>
+    <div class="btn-container">
+      <button id ="btn_TSP" class="btn route-display">巡回経路表示</button>
+      <p id="button1Text" class="hidden"></p>
+    </div>
+    <div class="btn-container">
+      <button id ="btn_carpool" class="btn route-display">相乗り経路表示</button>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="static\js\main.js"></script>    
 </body>
-
-<div class="mamListBox">
-  <a href="javascript:void(0)">
-    <div>出発地点指定</div>
-  </a>
-  <select size="3" data-role="none">
-    <option value="start">出発地点指定</option>
-    <option value="location">経由地点指定</option>
-    <option value="end">到着地点指定</option>
-  </select>
-</div>
 
 </html>

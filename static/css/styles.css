@@ -6,32 +6,41 @@
   bottom: 0;
 }
 
-.button-container {
-  position: absolute;
-  z-index: 1000;
-  width: 100px;
+.btn-flex{
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px;
 }
 
-.custom-button {
-  padding: 10px 20px;
+.btn-container {
+  display: flex;
+  flex-direction: column;
+  justify-content:flex-start;
+  z-index: 1000;
+}
+
+.btn {
+  z-index: 1000;
   background-color: #fff;
   border: 1px solid #000;
   border-radius: 4px;
   transition: background-color 0.2s ease;
+  text-align: center;
+  cursor:pointer;
 }
 
-.custom-button:hover {
+.btn:hover {
   background-color: #d0d0d0; 
 }
 
-.custom-button.active {
+.btn.active {
   background-color: #a0a0a0;
 }
 
-.button-container.button-top-right {
-  top: 10px;
-  left: auto;
-  right: 10px;
+.route-display {
+  width: 140px;
+  height: 40px;
+  margin-right: 10px;
 }
 
 .hidden {
@@ -41,26 +50,18 @@
 }
 
 #button1Text{
-  margin: 16px 0;
   font-size: 14px;
   color: red;
   display:inline-block;
-  margin-top: 10%;
+  width: 140px;
   background-color: white;
-  /* left: auto;
-  right: 10px; */
+  margin:0;
 }
 
 .mamListBox {
-  width: 120px;
+  width: 140px;
   height: 40px;
-  position: absolute;
-  padding: 0;
-  margin: 0;
-  z-index: 1000;
-  top: 10px;
-  left: auto;
-  right: 125px;
+  margin-right: 10px;
 }
 
 .mamListBox > a {
@@ -68,15 +69,10 @@
   text-decoration: none;
   background: #fff;
   color: #000;
-  border: 1px solid #000;
-  height: 100%;
-  width: 100%;
+  width: 140px;
+  height: 40px;
   border-radius: 4px; 
   font-size: 14px; 
-  box-sizing: border-box;
-  display: flex;
-  align-items: center; 
-  justify-content: center;
 }
 
 .mamListBox > a:hover {
@@ -88,20 +84,19 @@
 }
 
 .mamListBox > a > div {
-  padding: 4px;
   display: inline-block;
-  position: absolute;
-  transform: translateY(-50%);
-  top: 50%;
   text-align: center;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  width: 100%;
+  width: 140px;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .mamListBox > select {
-  position: absolute;
   margin: 0;
   display: none;
   font-size: 14pt;
