@@ -10,8 +10,8 @@ app = Flask(__name__)
 def leafletMap():
     return render_template("index.html")
 
-@app.route('/process_ajax', methods=['POST'])
-def process_ajax():
+@app.route('/TSP_path', methods=['POST'])
+def TSP_path():
     if request.method == 'POST':
         #リクエストからデータを取得
         data = request.get_json()  
@@ -30,16 +30,40 @@ def process_ajax():
         Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        #path = pathSearch.shortestPath(points[0], points[1], Db.link, Db.length)
-        #path = pathSearch.MST(Db.link, Db.length)
-        #path = pathSearch.steiner(points, Db.link, Db.length)
-        path, len = pathSearch.traveling(points, Db.link, Db.length)
+        path, len, _ = pathSearch.travelingPath(points, Db.link, Db.length)
   
         return jsonify({'path': path, 'len': len})
     
     else:
         return jsonify({'message': 'Invalid request method'})
     
+@app.route('/SRP_path', methods=['POST'])
+def SRP_path():
+    if request.method == 'POST':
+        #リクエストからデータを取得
+        data = request.get_json()  
+        points = data['points']
+        startPoint = data['startPoint']
+        endPoint = data['endPoint']
+
+        if startPoint:
+            points.append(startPoint)
+        if endPoint:
+            points.append(endPoint)
+
+        #データベースから道路データを取得
+        Db = db.yamamotoDb()
+        y1, x1, y2, x2 = pathSearch.rectangleArea(points)
+        Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
+
+        #経路探索
+        path, len = pathSearch.sharedRidePath(points, Db.link, Db.length)
+  
+        return jsonify({'path': path, 'len': len})
+    
+    else:
+        return jsonify({'message': 'Invalid request method'})
+
 if __name__ == "__main__":
     app.run(host="133.68.17.14",port=80)
 

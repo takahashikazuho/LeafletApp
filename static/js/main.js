@@ -29,7 +29,8 @@ var endPoint = [];
 var markerType = "location";
 var startMarkerFlag = false;
 var endMarkerFlag = false;
-var button1Active = false;
+var btn_TSP_isActive = false;
+var btn_SRP_isActive = false;
 
 // マウスクリックで緯度経度の取得とマーカー設置
 function onMapClick(e) {
@@ -85,12 +86,12 @@ function onEndMarkerClick(e) {
   endMarkerFlag = false;
 }
 
-const button1Text = document.getElementById('button1Text');
+const btn_TSP_text = document.getElementById('btn_TSP_text');
 // 巡回経路探索ボタンのクリックイベント
 $('#btn_TSP').click(function() {
-  button1Active = !button1Active; // 状態を反転させる
+  btn_TSP_isActive = !btn_TSP_isActive; // 状態を反転させる
 
-  if (button1Active) {
+  if (btn_TSP_isActive) {
     $(this).addClass('active'); // ボタンが押されている表示にする
     var requestData = {
             points:points,
@@ -98,7 +99,7 @@ $('#btn_TSP').click(function() {
             endPoint:endPoint
         };
     $.ajax({
-        url: '/process_ajax',
+        url: '/TSP_path',
         type: 'POST',
         contentType: 'application/json',
         data: JSON.stringify(requestData),
@@ -109,8 +110,8 @@ $('#btn_TSP').click(function() {
             polyline = L.polyline(path, { color: 'red' })
             polyline.addTo(map);
             var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
-            button1Text.textContent = '経路長：'+len_round+'km';
-            $('#button1Text').removeClass('hidden');
+            btn_TSP_text.textContent = '経路長：'+len_round+'km';
+            $('#btn_TSP_text').removeClass('hidden');
         }
     });
   } else {
@@ -118,7 +119,44 @@ $('#btn_TSP').click(function() {
     if (polyline) {
       map.removeLayer(polyline); // polyline を地図から削除
     }
-    $('#button1Text').addClass('hidden');
+    $('#btn_TSP_text').addClass('hidden');
+  }
+});
+
+const btn_SRP_text = document.getElementById('btn_SRP_text');
+// 相乗り経路探索ボタンのクリックイベント
+$('#btn_SRP').click(function() {
+  btn_SRP_isActive = !btn_SRP_isActive; // 状態を反転させる
+
+  if (btn_SRP_isActive) {
+    $(this).addClass('active'); // ボタンが押されている表示にする
+    var requestData = {
+            points:points,
+            startPoint:startPoint,
+            endPoint:endPoint
+        };
+    $.ajax({
+        url: '/SRP_path',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(requestData),
+        success: function(response) {
+            var path = response.path;
+            var len = response.len;
+            // 経路を表示
+            polyline2 = L.polyline(path, { color: 'blue' })
+            polyline2.addTo(map);
+            var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
+            btn_SRP_text.textContent = '経路長：'+len_round+'km';
+            $('#btn_SRP_text').removeClass('hidden');
+        }
+    });
+  } else {
+    $(this).removeClass('active'); // ボタンが押されていない表示にする
+    if (polyline2) {
+      map.removeLayer(polyline2); // polyline2 を地図から削除
+    }
+    $('#btn_SRP_text').addClass('hidden');
   }
 });
 

@@ -32,86 +32,29 @@ def nearestNode(p, link):
                 nearestNode = point
     return nearestNode
 
-#Gを連結グラフにする
-def connectGraph(G):
-    if not nx.algorithms.components.is_connected(G):
-        components = list(nx.algorithms.components.connected_components(G))
-        for i in range(len(components) - 1):
-            if not nx.algorithms.components.is_connected(G):
-                component1 = components[i]
-                component2 = components[i + 1]
-                node1 = next(iter(component1))
-                node2 = next(iter(component2))
-                G.add_weighted_edges_from([(node1, node2, float('inf'))])
+# #Gを連結グラフにする
+# def connectGraph(G):
+#     if not nx.algorithms.components.is_connected(G):
+#         components = list(nx.algorithms.components.connected_components(G))
+#         for i in range(len(components) - 1):
+#             if not nx.algorithms.components.is_connected(G):
+#                 component1 = components[i]
+#                 component2 = components[i + 1]
+#                 node1 = next(iter(component1))
+#                 node2 = next(iter(component2))
+#                 G.add_weighted_edges_from([(node1, node2, float('inf'))])
 
-#最短経路
-def shortestPath(p1, p2, link, length):
-    #最近傍ノードを取得
-    p1 = nearestNode(p1, link)
-    p2 = nearestNode(p2, link)
-
-    #networkxのグラフを生成
+#グラフ生成
+def linkToGraph(link, length):
     edges = []
     for i in range(len(link)):
         edges.append((str(link[i][0]), str(link[i][1]), length[i]))
     G = nx.Graph()
     G.add_weighted_edges_from(edges)
-    connectGraph(G)
-
-    #最短経路探索
-    path_str = nx.dijkstra_path(G, str(p1), str(p2))
-
-    #結果をstrから戻して返却
-    path = []
-    for line in path_str:
-        path.append([float(x) for x in line.strip('[]').split(',')])
-    return path
-
-#最小全域木
-def MST(link, length):
-    #networkxのグラフを生成
-    edges = []
-    for i in range(len(link)):
-        edges.append((str(link[i][0]), str(link[i][1]), length[i]))
-    G = nx.Graph()
-    G.add_weighted_edges_from(edges)
-    connectGraph(G)
-
-    #最小全域木を構成
-    t = nx.minimum_spanning_tree(G)
-    path = []
-    for edge in t.edges():
-        start = [float(x) for x in edge[0].strip('[]').split(',')]
-        end = [float(x) for x in edge[1].strip('[]').split(',')]
-        path.append([start, end])
-    return path
-
-#シュタイナー木
-def steiner(points, link, length):
-    #ターミナルノード
-    terminal = []
-    for p in points:
-        terminal.append(str(nearestNode(p, link)))
-
-    #networkxのグラフを生成
-    edges = []
-    for i in range(len(link)):
-        edges.append((str(link[i][0]), str(link[i][1]), length[i]))
-    G = nx.Graph()
-    G.add_weighted_edges_from(edges)
-    connectGraph(G)
-
-    #シュタイナー木を構成
-    t = nx.algorithms.approximation.steinertree.steiner_tree(G, terminal_nodes=terminal, method='mehlhorn')
-    path = []
-    for edge in t.edges():
-        start = [float(x) for x in edge[0].strip('[]').split(',')]
-        end = [float(x) for x in edge[1].strip('[]').split(',')]
-        path.append([start, end])
-    return path
+    return G
 
 #巡回経路
-def traveling(points, link, length):
+def travelingPath(points, link, length):
     #通るポイント(都市)
     positions = []
     for p in points:
@@ -122,11 +65,7 @@ def traveling(points, link, length):
     G.add_nodes_from(positions)
 
     #都市間の最短経路を求めるためのグラフ
-    G_temp = nx.Graph()
-    edges = []
-    for i in range(len(link)):
-        edges.append((str(link[i][0]), str(link[i][1]), length[i]))
-    G_temp.add_weighted_edges_from(edges)
+    G_temp = linkToGraph(link, length)
 
     #都市間の最短経路を求めて，Gのエッジとする
     for u in positions:
@@ -145,4 +84,16 @@ def traveling(points, link, length):
         length += nx.dijkstra_path_length(G_temp, tsp[i], tsp[i+1])
         for line in path_str:
             paths.append([float(x) for x in line.strip('[]').split(',')])
-    return paths, length
+    return paths, length, path_str
+
+#相乗り経路
+def sharedRidePath(points, link, length):
+    path_, length_, path = travelingPath(points, link, length)
+    G = linkToGraph(link, length)
+    predecessor, dist = nx.algorithms.shortest_paths.dense.floyd_warshall_predecessor_and_distance(G)
+    # print(dist)
+    return path_, length_
+#巡回順の決定
+#ワーシャルフロイド法
+#乗客の位置候補を格納
+#ビタビアルゴリズム

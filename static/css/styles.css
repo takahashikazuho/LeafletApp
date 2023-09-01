@@ -49,7 +49,7 @@
   transition: visibility 0.2s ease, opacity 0.2s ease;
 }
 
-#button1Text{
+.textBox {
   font-size: 14px;
   color: red;
   display:inline-block;
