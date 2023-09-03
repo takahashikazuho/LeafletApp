@@ -45,6 +45,7 @@ def SRP_path():
         points = data['points']
         startPoint = data['startPoint']
         endPoint = data['endPoint']
+        moveDist = float(data['moveDist'])
 
         if startPoint:
             points.append(startPoint)
@@ -57,7 +58,7 @@ def SRP_path():
         Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        path, len = pathSearch.sharedRidePath(points, Db.link, Db.length)
+        path, len = pathSearch.sharedRidePath(points, Db.link, Db.length, moveDist)
   
         return jsonify({'path': path, 'len': len})
     

@@ -87,7 +87,7 @@ def travelingPath(points, link, length):
     return paths, length, path_str
 
 #相乗り経路
-def sharedRidePath(points, link, length):
+def sharedRidePath(points, link, length, moveDist):
     path_, length_, path = travelingPath(points, link, length)
     G = linkToGraph(link, length)
     predecessor, dist = nx.algorithms.shortest_paths.dense.floyd_warshall_predecessor_and_distance(G)

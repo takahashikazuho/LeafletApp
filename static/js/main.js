@@ -124,6 +124,7 @@ $('#btn_TSP').click(function() {
 });
 
 const btn_SRP_text = document.getElementById('btn_SRP_text');
+const moveDist = document.getElementById('moveDist');
 // 相乗り経路探索ボタンのクリックイベント
 $('#btn_SRP').click(function() {
   btn_SRP_isActive = !btn_SRP_isActive; // 状態を反転させる
@@ -133,7 +134,8 @@ $('#btn_SRP').click(function() {
     var requestData = {
             points:points,
             startPoint:startPoint,
-            endPoint:endPoint
+            endPoint:endPoint,
+            moveDist:moveDist.value
         };
     $.ajax({
         url: '/SRP_path',

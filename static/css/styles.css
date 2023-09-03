@@ -9,6 +9,7 @@
 .btn-flex{
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   margin: 10px;
 }
 
@@ -108,6 +109,19 @@
 
 .mamListBox select:focus {
   outline: none;
+}
+
+.textForm {
+  z-index: 1001; 
+  margin-right: 10px;
+}
+
+.formBox {
+  width: 50px;
+}
+
+.formLabel {
+  background-color: white;
 }
 
 .icon-red { 
