@@ -32,17 +32,17 @@ def nearestNode(p, link):
                 nearestNode = point
     return nearestNode
 
-# #Gを連結グラフにする
-# def connectGraph(G):
-#     if not nx.algorithms.components.is_connected(G):
-#         components = list(nx.algorithms.components.connected_components(G))
-#         for i in range(len(components) - 1):
-#             if not nx.algorithms.components.is_connected(G):
-#                 component1 = components[i]
-#                 component2 = components[i + 1]
-#                 node1 = next(iter(component1))
-#                 node2 = next(iter(component2))
-#                 G.add_weighted_edges_from([(node1, node2, float('inf'))])
+#Gを連結グラフにする
+def connectGraph(G):
+    if not nx.algorithms.components.is_connected(G):
+        components = list(nx.algorithms.components.connected_components(G))
+        for i in range(len(components) - 1):
+            if not nx.algorithms.components.is_connected(G):
+                component1 = components[i]
+                component2 = components[i + 1]
+                node1 = next(iter(component1))
+                node2 = next(iter(component2))
+                G.add_weighted_edges_from([(node1, node2, float('inf'))])
 
 #グラフ生成
 def linkToGraph(link, length):
