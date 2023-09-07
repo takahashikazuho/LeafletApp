@@ -94,6 +94,6 @@ def sharedRidePath(points, link, length, moveDist):
     # print(dist)
     return path_, length_
 #巡回順の決定
-#ワーシャルフロイド法
+#周辺のノードを取得(SQL)
 #乗客の位置候補を格納
 #ビタビアルゴリズム
