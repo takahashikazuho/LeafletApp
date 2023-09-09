@@ -3,8 +3,9 @@
 """
 import math
 import networkx as nx
+import pyproj
 
-#クリックされた点を含む最小の矩形領域
+#クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
     min_lat = float('inf')
     max_lat = float('-inf')
@@ -20,6 +21,12 @@ def rectangleArea(points):
 
     return max_lat, min_lng, min_lat, max_lng
 
+#ある点の周囲の矩形領域
+def aroundRectagleArea(y, x, r):
+    grs80 = pyproj.Geod(ellps='GRS80')
+    
+    return
+
 #座標の最近傍ノードを取得
 def nearestNode(p, link):
     dist = float('inf')
@@ -32,19 +39,19 @@ def nearestNode(p, link):
                 nearestNode = point
     return nearestNode
 
-#Gを連結グラフにする
-def connectGraph(G):
-    if not nx.algorithms.components.is_connected(G):
-        components = list(nx.algorithms.components.connected_components(G))
-        for i in range(len(components) - 1):
-            if not nx.algorithms.components.is_connected(G):
-                component1 = components[i]
-                component2 = components[i + 1]
-                node1 = next(iter(component1))
-                node2 = next(iter(component2))
-                G.add_weighted_edges_from([(node1, node2, float('inf'))])
+# #Gを連結グラフにする
+# def connectGraph(G):
+#     if not nx.algorithms.components.is_connected(G):
+#         components = list(nx.algorithms.components.connected_components(G))
+#         for i in range(len(components) - 1):
+#             if not nx.algorithms.components.is_connected(G):
+#                 component1 = components[i]
+#                 component2 = components[i + 1]
+#                 node1 = next(iter(component1))
+#                 node2 = next(iter(component2))
+#                 G.add_weighted_edges_from([(node1, node2, float('inf'))])
 
-#グラフ生成
+#リンクからグラフ生成
 def linkToGraph(link, length):
     edges = []
     for i in range(len(link)):

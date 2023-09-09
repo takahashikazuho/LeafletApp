@@ -26,12 +26,11 @@ def TSP_path():
             points.append(endPoint)
 
         #データベースから道路データを取得
-        Db = db.yamamotoDb()
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        path, len, _ = pathSearch.travelingPath(points, Db.link, Db.length)
+        path, len, _ = pathSearch.travelingPath(points, link, length)
   
         return jsonify({'path': path, 'len': len})
     
