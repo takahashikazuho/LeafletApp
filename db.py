@@ -48,34 +48,3 @@ def getRectangleRoadData(y1, x1, y2, x2, n = 1):
     conn.close()
 
     return link, length
-
-#円形範囲の道路データを取得する
-def getCircleRoadData(y, x, r):
-    conn = psycopg2.connect(database=DBNAME, user=USER, password=PASS, host=URL, port=PORT)
-    cur = conn.cursor()
-    
-    try:
-        statement = "select  "\
-                        "km, x1, y1, x2, y2, geom_way  "\
-                    "from "\
-                        "osm_japan_car_2po_4pgr  "\
-                    "where "\
-                        "ST_DWithin("\
-                            "geom_way::geography,"\
-                            "'SRID=4326;POINT("+str(y)+" "+str(x)+")'::GEOGRAPHY,"+str(r)+");"\
-                            
-        cur.execute(statement)
-        docs = cur.fetchall()
-
-        link = []
-        length = []
-        for rs in docs:
-            link.append([[float(rs[2]), float(rs[1])], [float(rs[4]), float(rs[3])]])
-            length.append(float(rs[0]))
-
-    except Exception as e:
-        print(e)
-    cur.close()
-    conn.close()
-
-    return link, length

@@ -4,6 +4,7 @@
 import math
 import networkx as nx
 import pyproj
+import db
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
@@ -22,10 +23,12 @@ def rectangleArea(points):
     return max_lat, min_lng, min_lat, max_lng
 
 #ある点の周囲の矩形領域
+#半径rの円に接する正方形の左上と右下の点
 def aroundRectagleArea(y, x, r):
     grs80 = pyproj.Geod(ellps='GRS80')
-    
-    return
+    y1, x1, _back1 = grs80.fwd(float(y), float(x), 135, r * math.sqrt(2))
+    y2, x2, _back2 = grs80.fwd(float(y), float(x), 315, r * math.sqrt(2))
+    return y1, x1, y2, x2
 
 #座標の最近傍ノードを取得
 def nearestNode(p, link):
@@ -95,12 +98,39 @@ def travelingPath(points, link, length):
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist):
+    #巡回順を決定
     path_, length_, path = travelingPath(points, link, length)
+
+    #乗客の移動候補ノードを取得
+    candidates = []
+    for p in path:
+        y1, x1, y2, x2 = aroundRectagleArea(p[1], p[0], moveDist)
+        link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
+        G_temp = linkToGraph(link_temp, length_temp)
+        for node in list(G_temp.nodes):
+            candidate = []
+            if nx.dijkstra_path_length(G_temp, p, node) <= moveDist:
+                candidate.append(node)
+        candidates.append(candidate)
+
+    #順に候補点から経由点を決定
     G = linkToGraph(link, length)
-    predecessor, dist = nx.algorithms.shortest_paths.dense.floyd_warshall_predecessor_and_distance(G)
-    # print(dist)
+    path_SRP = [path[0]]
+    length_SRP = 0
+    for i in len(path)-2:
+        dist_min = float('inf')
+        for node in candidates[i+1]:
+            dist = nx.dijkstra_path_length(G, path[i], node)
+            #Gじゃなくて近い範囲をDBから取ってくる？
+            if dist < dist_min:
+                dist_min = dist
+                node_min = node
+        path_SRP.append(node_min)
+        length_SRP += dist_min
+            
     return path_, length_
 #巡回順の決定
-#周辺のノードを取得(SQL)
+#周辺のノードを取得
+#各ターミナルから周辺ノードまでの距離をダイクストラ法で探索
 #乗客の位置候補を格納
 #ビタビアルゴリズム
