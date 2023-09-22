@@ -26,8 +26,8 @@ def rectangleArea(points):
 #半径rの円に接する正方形の左上と右下の点
 def aroundRectagleArea(y, x, r):
     grs80 = pyproj.Geod(ellps='GRS80')
-    y1, x1, _back1 = grs80.fwd(float(y), float(x), 135, r * math.sqrt(2))
-    y2, x2, _back2 = grs80.fwd(float(y), float(x), 315, r * math.sqrt(2))
+    x1, y1, _back1 = grs80.fwd(float(y), float(x), 135, r * math.sqrt(2))
+    x2, y2, _back2 = grs80.fwd(float(y), float(x), 315, r * math.sqrt(2))
     return y1, x1, y2, x2
 
 #座標の最近傍ノードを取得
@@ -42,17 +42,17 @@ def nearestNode(p, link):
                 nearestNode = point
     return nearestNode
 
-# #Gを連結グラフにする
-# def connectGraph(G):
-#     if not nx.algorithms.components.is_connected(G):
-#         components = list(nx.algorithms.components.connected_components(G))
-#         for i in range(len(components) - 1):
-#             if not nx.algorithms.components.is_connected(G):
-#                 component1 = components[i]
-#                 component2 = components[i + 1]
-#                 node1 = next(iter(component1))
-#                 node2 = next(iter(component2))
-#                 G.add_weighted_edges_from([(node1, node2, float('inf'))])
+#Gを連結グラフにする
+def connectGraph(G):
+    if not nx.algorithms.components.is_connected(G):
+        components = list(nx.algorithms.components.connected_components(G))
+        for i in range(len(components) - 1):
+            if not nx.algorithms.components.is_connected(G):
+                component1 = components[i]
+                component2 = components[i + 1]
+                node1 = next(iter(component1))
+                node2 = next(iter(component2))
+                G.add_weighted_edges_from([(node1, node2, float('inf'))])
 
 #リンクからグラフ生成
 def linkToGraph(link, length):
@@ -76,6 +76,7 @@ def travelingPath(points, link, length):
 
     #都市間の最短経路を求めるためのグラフ
     G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
 
     #都市間の最短経路を求めて，Gのエッジとする
     for u in positions:
@@ -87,48 +88,60 @@ def travelingPath(points, link, length):
     tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G))
 
     #巡回順に最短経路を求めて返却
-    paths = []
+    path = []
     length = 0
     for i in range(len(tsp)-1):
         path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
         length += nx.dijkstra_path_length(G_temp, tsp[i], tsp[i+1])
         for line in path_str:
-            paths.append([float(x) for x in line.strip('[]').split(',')])
-    return paths, length, path_str
+            path.append([float(x) for x in line.strip('[]').split(',')])
+    return path, length, tsp
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist):
     #巡回順を決定
-    path_, length_, path = travelingPath(points, link, length)
+    path_, length_, tsp = travelingPath(points, link, length)
 
     #乗客の移動候補ノードを取得
+    tsp.pop()
     candidates = []
-    for p in path:
-        y1, x1, y2, x2 = aroundRectagleArea(p[1], p[0], moveDist)
+    for p in tsp:
+        point = p.strip("[]").split(",")  #ノードは"[x, y]"
+        y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
         link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
         G_temp = linkToGraph(link_temp, length_temp)
+        connectGraph(G_temp)
+        candidate = [p]
         for node in list(G_temp.nodes):
-            candidate = []
-            if nx.dijkstra_path_length(G_temp, p, node) <= moveDist:
+            if nx.dijkstra_path_length(G_temp, p, node) <= moveDist/1000:
                 candidate.append(node)
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
     G = linkToGraph(link, length)
-    path_SRP = [path[0]]
+    positions_SRP = [tsp[0]]
     length_SRP = 0
-    for i in len(path)-2:
+    for i in range(len(tsp)-1):
         dist_min = float('inf')
+        node_min = ""
         for node in candidates[i+1]:
-            dist = nx.dijkstra_path_length(G, path[i], node)
-            #Gじゃなくて近い範囲をDBから取ってくる？
-            if dist < dist_min:
-                dist_min = dist
-                node_min = node
-        path_SRP.append(node_min)
+            if node in list(G.nodes):
+                dist = nx.dijkstra_path_length(G, positions_SRP[i], node)
+                if dist < dist_min:
+                    dist_min = dist
+                    node_min = node
+        positions_SRP.append(node_min)
         length_SRP += dist_min
+    
+    #巡回順に最短経路を求めて返却
+    positions_SRP.append(positions_SRP[0])
+    path = []
+    for i in range(len(positions_SRP)-1):
+        path_str = nx.dijkstra_path(G, positions_SRP[i], positions_SRP[i+1])
+        for line in path_str:
+            path.append([float(x) for x in line.strip('[]').split(',')])
             
-    return path_, length_
+    return path, length_SRP
 #巡回順の決定
 #周辺のノードを取得
 #各ターミナルから周辺ノードまでの距離をダイクストラ法で探索

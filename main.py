@@ -18,7 +18,6 @@ def TSP_path():
         points = data['points']
         startPoint = data['startPoint']
         endPoint = data['endPoint']
-        print(points)
 
         if startPoint:
             points.append(startPoint)
@@ -53,12 +52,11 @@ def SRP_path():
             points.append(endPoint)
 
         #データベースから道路データを取得
-        Db = db.yamamotoDb()
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        Db.insertOsmRoadData(y1, x1, y2, x2, 1.25)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        path, len = pathSearch.sharedRidePath(points, Db.link, Db.length, moveDist)
+        path, len = pathSearch.sharedRidePath(points, link, length, moveDist)
   
         return jsonify({'path': path, 'len': len})
     
