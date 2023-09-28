@@ -101,6 +101,8 @@ def travelingPath(points, link, length):
 def sharedRidePath(points, link, length, moveDist):
     #巡回順を決定
     path_, length_, tsp = travelingPath(points, link, length)
+    #pointsとpositionsを辞書にして，tspとpointsを結びつける
+    #巡回順になったpointsを返却する
 
     #乗客の移動候補ノードを取得
     tsp.pop()
@@ -120,7 +122,6 @@ def sharedRidePath(points, link, length, moveDist):
     #順に候補点から経由点を決定
     G = linkToGraph(link, length)
     positions_SRP = [tsp[0]]
-    length_SRP = 0
     for i in range(len(tsp)-1):
         dist_min = float('inf')
         node_min = ""
@@ -131,19 +132,15 @@ def sharedRidePath(points, link, length, moveDist):
                     dist_min = dist
                     node_min = node
         positions_SRP.append(node_min)
-        length_SRP += dist_min
     
     #巡回順に最短経路を求めて返却
     positions_SRP.append(positions_SRP[0])
     path = []
+    length_SRP = 0
     for i in range(len(positions_SRP)-1):
         path_str = nx.dijkstra_path(G, positions_SRP[i], positions_SRP[i+1])
+        length_SRP += nx.dijkstra_path_length(G, positions_SRP[i], positions_SRP[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
             
     return path, length_SRP
-#巡回順の決定
-#周辺のノードを取得
-#各ターミナルから周辺ノードまでの距離をダイクストラ法で探索
-#乗客の位置候補を格納
-#ビタビアルゴリズム

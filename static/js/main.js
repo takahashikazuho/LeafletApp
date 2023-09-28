@@ -26,6 +26,7 @@ const redIcon = L.icon({
 var points = [];
 var startPoint = [];
 var endPoint = [];
+var markers = [];
 var markerType = "location";
 var startMarkerFlag = false;
 var endMarkerFlag = false;
@@ -43,19 +44,22 @@ function onMapClick(e) {
                       .bindPopup('出発地点',{autoClose:false}).openPopup();
       startPoint = [e.latlng.lat, e.latlng.lng];
       startMarkerFlag = true;
+      markers.push(marker);
       break;
     case "location":
-      L.marker(e.latlng).on('click', onMarkerClick).addTo(map);
+      marker = L.marker(e.latlng).on('click', onMarkerClick).addTo(map);
       points.push([e.latlng.lat, e.latlng.lng]);
+      markers.push(marker);
       break;
     case "end":
       if(endMarkerFlag) {
-          break;
-        }
-        endMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onEndMarkerClick).addTo(map)
-                      .bindPopup('到着地点',{autoClose:false}).openPopup();
-        endPoint = [e.latlng.lat, e.latlng.lng];
-        endMarkerFlag = true;
+        break;
+      }
+      endMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onEndMarkerClick).addTo(map)
+                    .bindPopup('到着地点',{autoClose:false}).openPopup();
+      endPoint = [e.latlng.lat, e.latlng.lng];
+      endMarkerFlag = true;
+      markers.push(marker);
       break;
     default:
       break;
