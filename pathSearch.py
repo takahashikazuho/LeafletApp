@@ -99,10 +99,33 @@ def travelingPath(points, link, length):
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist):
-    #巡回順を決定
-    path_, length_, tsp = travelingPath(points, link, length)
     #pointsとpositionsを辞書にして，tspとpointsを結びつける
     #巡回順になったpointsを返却する
+
+    #通るポイント(都市)
+    point_dict = {}
+    positions = []
+    for p in points:
+        node = str(nearestNode(p, link))
+        positions.append(node)
+        point_dict[node] = p
+
+    #巡回セールスマン問題のためのグラフ
+    G_temp = nx.Graph()
+    G_temp.add_nodes_from(positions)
+
+    #都市間の最短経路を求めるためのグラフ
+    G = linkToGraph(link, length)
+    connectGraph(G)
+
+    #都市間の最短経路を求めて，Gのエッジとする
+    for u in positions:
+        for v in positions:
+            if positions.index(u) < positions.index(v):
+                G_temp.add_edge(u, v, weight=nx.dijkstra_path_length(G, u, v))
+    
+    #巡回セールスマン問題を解く
+    tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G_temp))
 
     #乗客の移動候補ノードを取得
     tsp.pop()
@@ -120,7 +143,6 @@ def sharedRidePath(points, link, length, moveDist):
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
-    G = linkToGraph(link, length)
     positions_SRP = [tsp[0]]
     for i in range(len(tsp)-1):
         dist_min = float('inf')
@@ -143,4 +165,9 @@ def sharedRidePath(points, link, length, moveDist):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
             
-    return path, length_SRP
+    #巡回順のクリックされた点の座標
+    points_SRP = []
+    for p in tsp:
+        points_SRP.append(point_dict[p])
+
+    return path, length_SRP, points_SRP
