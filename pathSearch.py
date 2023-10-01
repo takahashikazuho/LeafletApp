@@ -131,7 +131,7 @@ def sharedRidePath(points, link, length, moveDist):
     tsp.pop()
     candidates = []
     for p in tsp:
-        point = p.strip("[]").split(",")  #ノードは"[x, y]"
+        point = p.strip("[]").split(",")
         y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
         link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
         G_temp = linkToGraph(link_temp, length_temp)
@@ -143,7 +143,7 @@ def sharedRidePath(points, link, length, moveDist):
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
-    positions_SRP = [tsp[0]]
+    positions_SRP = [tsp[0]]        #移動先のノード集合
     for i in range(len(tsp)-1):
         dist_min = float('inf')
         node_min = ""
@@ -164,10 +164,24 @@ def sharedRidePath(points, link, length, moveDist):
         length_SRP += nx.dijkstra_path_length(G, positions_SRP[i], positions_SRP[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
-            
+    positions_SRP.pop()
+
     #巡回順のクリックされた点の座標
     points_SRP = []
     for p in tsp:
         points_SRP.append(point_dict[p])
 
-    return path, length_SRP, points_SRP
+    #各移動先までの経路
+    path_positions = []
+    positions_SRP_a = []
+    for i in range(len(positions_SRP)):
+        positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
+        point = str(nearestNode(points_SRP[i], link))
+        if point != positions_SRP[i]:
+            path_str = nx.dijkstra_path(G, point, positions_SRP[i])
+            path_temp = []
+            for line in path_str:
+                path_temp.append([float(x) for x in line.strip('[]').split(',')])
+            path_positions.append(path_temp)
+
+    return path, length_SRP, points_SRP, positions_SRP_a, path_positions

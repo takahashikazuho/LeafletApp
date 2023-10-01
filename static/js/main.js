@@ -71,7 +71,6 @@ map.on('click', onMapClick);
 function onMarkerClick(e) {
   var index = points.findIndex( item => JSON.stringify( item ) ===
                                   JSON.stringify([e.target.getLatLng().lat, e.target.getLatLng().lng]));
-  console.log(index);
   if (index > -1){
     points.splice(index, 1)
   }
@@ -149,18 +148,58 @@ $('#btn_SRP').click(function() {
         success: function(response) {
             var path = response.path;
             var len = response.len;
+            var points_SRP = response.points_SRP;
+            var positions_SRP = response.positions_SRP;
+            var path_positions = response.path_positions;
+
             // 経路を表示
             polyline2 = L.polyline(path, { color: 'blue' })
             polyline2.addTo(map);
+            var polylines = []
+            for(var i=0; i<path_positions.length; i++) {
+              polylines[i] = L.polyline(path_positions[i], { color: 'green', opacity: 0.8 })
+              polylines[i].addTo(map);
+            }
             var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_SRP_text.textContent = '経路長：'+len_round+'km';
+            btn_SRP_text.textContent = '経路長：' + len_round + 'km';
             $('#btn_SRP_text').removeClass('hidden');
+
+            //マーカーに巡回順を追加
+            for(var i=0; i<points_SRP.length; i++) {
+              points_SRP_latlng = L.latLng(points_SRP[i][0], points_SRP[i][1]);
+              for(var j=0; j<markers.length; j++) {
+                if(markers[j].getLatLng().equals(points_SRP_latlng)) {
+                  markers[j].bindPopup(String(i+1),{autoClose:false}).openPopup();
+                }
+              }
+            }
+
+            //移動先の点を表示
+            var option = {
+              radius: 5,       
+              fillColor: "blue", 
+              color: "blue",     
+              opacity: 1,         
+              fillOpacity: 1
+            }
+            var circleMarkers = [];
+            for(var i=0; i<positions_SRP.length; i++) {
+              circleMarkers[i] = L.circleMarker(positions_SRP[i], option).addTo(map);
+            }
         }
     });
   } else {
     $(this).removeClass('active'); // ボタンが押されていない表示にする
     if (polyline2) {
       map.removeLayer(polyline2); // polyline2 を地図から削除
+      map.removeLayer(polyline3);
+      for(var i=0; i<circleMarkers.length; i++) {
+        map.removeLayer(circleMarkers[i]);
+      }
+
+    }
+    for(var i=0; i<markers.length; i++) {
+      markers[i].closePopup();
     }
     $('#btn_SRP_text').addClass('hidden');
   }
