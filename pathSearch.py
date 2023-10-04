@@ -97,6 +97,40 @@ def travelingPath(points, link, length):
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
 
+#経由点決定(あまのさん)
+def viterbi_ver1(tsp, candidates, G):
+    positions_SRP = [tsp[0]]
+    for i in range(len(tsp)-1):
+        dist_min = float('inf')
+        node_min = ""
+        for node in candidates[i+1]:
+            if node in list(G.nodes):
+                dist = nx.dijkstra_path_length(G, positions_SRP[i], node)
+                if dist < dist_min:
+                    dist_min = dist
+                    node_min = node
+        positions_SRP.append(node_min)
+    return positions_SRP
+
+#経由点決定(３点間)
+def viterbi_ver2(tsp, candidates, G):
+    positions_SRP = [tsp[0]]
+    for i in range(len(tsp)):
+        dist_min = float('inf')
+        node_min = ""
+        #if n == len(tsp)-1:
+        for node in candidates[i+1]:
+            dist = nx.dijkstra_path_length(G, positions_SRP[i], node) + nx.dijkstra_path_length(G, tsp[i+1], node) + nx.dijkstra_path_length(G, tsp[i+2], node)
+            if dist < dist_min:
+                    dist_min = dist
+                    node_min = node
+        positions_SRP.append(node_min)
+
+        #if n == len(tsp):
+    l = len(tsp)-2
+    return positions_SRP
+
+
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist):
     #pointsとpositionsを辞書にして，tspとpointsを結びつける
@@ -143,7 +177,7 @@ def sharedRidePath(points, link, length, moveDist):
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
-    positions_SRP = [tsp[0]]        #移動先のノード集合
+    positions_SRP = [tsp[0]]
     for i in range(len(tsp)-1):
         dist_min = float('inf')
         node_min = ""

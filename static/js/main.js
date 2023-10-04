@@ -27,6 +27,8 @@ var points = [];
 var startPoint = [];
 var endPoint = [];
 var markers = [];
+var polylines = [];
+var circleMarkers = [];
 var markerType = "location";
 var startMarkerFlag = false;
 var endMarkerFlag = false;
@@ -155,7 +157,6 @@ $('#btn_SRP').click(function() {
             // 経路を表示
             polyline2 = L.polyline(path, { color: 'blue' })
             polyline2.addTo(map);
-            var polylines = []
             for(var i=0; i<path_positions.length; i++) {
               polylines[i] = L.polyline(path_positions[i], { color: 'green', opacity: 0.8 })
               polylines[i].addTo(map);
@@ -182,7 +183,6 @@ $('#btn_SRP').click(function() {
               opacity: 1,         
               fillOpacity: 1
             }
-            var circleMarkers = [];
             for(var i=0; i<positions_SRP.length; i++) {
               circleMarkers[i] = L.circleMarker(positions_SRP[i], option).addTo(map);
             }
@@ -192,7 +192,9 @@ $('#btn_SRP').click(function() {
     $(this).removeClass('active'); // ボタンが押されていない表示にする
     if (polyline2) {
       map.removeLayer(polyline2); // polyline2 を地図から削除
-      map.removeLayer(polyline3);
+      for(var i=0; i<polylines.length; i++) {
+        map.removeLayer(polylines[i]);
+      }
       for(var i=0; i<circleMarkers.length; i++) {
         map.removeLayer(circleMarkers[i]);
       }
