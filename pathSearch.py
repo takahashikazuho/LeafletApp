@@ -118,16 +118,22 @@ def viterbi_ver2(tsp, candidates, G):
     for i in range(len(tsp)):
         dist_min = float('inf')
         node_min = ""
-        #if n == len(tsp)-1:
-        for node in candidates[i+1]:
-            dist = nx.dijkstra_path_length(G, positions_SRP[i], node) + nx.dijkstra_path_length(G, tsp[i+1], node) + nx.dijkstra_path_length(G, tsp[i+2], node)
+        n = i + 1
+        m = i + 2
+        if i == len(tsp) - 2:
+            m = 0
+        if i == len(tsp) - 1:
+            n = 0
+            m = 1
+        for node in candidates[n]:
+            dist = nx.dijkstra_path_length(G, positions_SRP[i], node) + nx.dijkstra_path_length(G, tsp[n], node) + nx.dijkstra_path_length(G, tsp[m], node)
             if dist < dist_min:
                     dist_min = dist
                     node_min = node
         positions_SRP.append(node_min)
+    positions_SRP[0] = positions_SRP[len(positions_SRP) - 1]
+    positions_SRP.pop()
 
-        #if n == len(tsp):
-    l = len(tsp)-2
     return positions_SRP
 
 
@@ -177,17 +183,7 @@ def sharedRidePath(points, link, length, moveDist):
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
-    positions_SRP = [tsp[0]]
-    for i in range(len(tsp)-1):
-        dist_min = float('inf')
-        node_min = ""
-        for node in candidates[i+1]:
-            if node in list(G.nodes):
-                dist = nx.dijkstra_path_length(G, positions_SRP[i], node)
-                if dist < dist_min:
-                    dist_min = dist
-                    node_min = node
-        positions_SRP.append(node_min)
+    positions_SRP = viterbi_ver2(tsp, candidates, G)
     
     #巡回順に最短経路を求めて返却
     positions_SRP.append(positions_SRP[0])
@@ -219,3 +215,5 @@ def sharedRidePath(points, link, length, moveDist):
             path_positions.append(path_temp)
 
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions
+
+#pointsとかpositionsが何か説明つくる
