@@ -138,7 +138,7 @@ def viterbi_ver2(tsp, candidates, G):
 
 
 #相乗り経路
-def sharedRidePath(points, link, length, moveDist):
+def sharedRidePath(points, link, length, moveDist, value):
     #pointsとpositionsを辞書にして，tspとpointsを結びつける
     #巡回順になったpointsを返却する
 
@@ -183,7 +183,10 @@ def sharedRidePath(points, link, length, moveDist):
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
-    positions_SRP = viterbi_ver2(tsp, candidates, G)
+    if value == "type1":
+        positions_SRP = viterbi_ver1(tsp, candidates, G)
+    if value == "type2":
+        positions_SRP = viterbi_ver2(tsp, candidates, G)
     
     #巡回順に最短経路を求めて返却
     positions_SRP.append(positions_SRP[0])
@@ -217,3 +220,4 @@ def sharedRidePath(points, link, length, moveDist):
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions
 
 #pointsとかpositionsが何か説明つくる
+#比較用にラジオボタンをつくる

@@ -124,6 +124,11 @@
   background-color: white;
 }
 
+.radio-type {
+  background-color: white; 
+  z-index: 1001; 
+}
+
 .icon-red { 
   filter: hue-rotate(150deg);
 }  

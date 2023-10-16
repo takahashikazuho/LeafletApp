@@ -136,11 +136,19 @@ $('#btn_SRP').click(function() {
 
   if (btn_SRP_isActive) {
     $(this).addClass('active'); // ボタンが押されている表示にする
+    let elements = document.getElementsByName('type');
+    let checkValue = '';
+    for (let i = 0; i < elements.length; i++){
+        if (elements.item(i).checked){
+            checkValue = elements.item(i).value;
+        }
+    }
     var requestData = {
             points:points,
             startPoint:startPoint,
             endPoint:endPoint,
-            moveDist:moveDist.value
+            moveDist:moveDist.value,
+            value:checkValue
         };
     $.ajax({
         url: '/SRP_path',

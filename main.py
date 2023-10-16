@@ -45,6 +45,7 @@ def SRP_path():
         startPoint = data['startPoint']
         endPoint = data['endPoint']
         moveDist = float(data['moveDist'])
+        value = data['value']
 
         if startPoint:
             points.append(startPoint)
@@ -56,7 +57,7 @@ def SRP_path():
         link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
 
         #経路探索
-        path, len, points_SRP, positions_SRP, path_positions = pathSearch.sharedRidePath(points, link, length, moveDist)
+        path, len, points_SRP, positions_SRP, path_positions = pathSearch.sharedRidePath(points, link, length, moveDist, value)
   
         return jsonify({'path': path, 'len': len, 'points_SRP': points_SRP, 'positions_SRP': positions_SRP, 'path_positions': path_positions})
     
