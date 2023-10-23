@@ -9,24 +9,24 @@
   <div id="map"></div>
   <div class="btn-flex">
     <div class="textForm">
-      <p><label class="formLabel">移動許容距離(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
+      <p><label class="formLabel">Maximum Walking Distance(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
     </div>
     <div class="btn mamListBox">
       <a href="javascript:void(0)">
-        <div>経由地点指定</div>
+        <div>Transit Point</div>
       </a>
       <select size="3" data-role="none">
-        <option value="location">経由地点指定</option>
-        <option value="start">出発地点指定</option>
-        <option value="end">到着地点指定</option>
+        <option value="location">Transit Point</option>
+        <option value="start">Departure Point</option>
+        <option value="end">Arrival Point</option>
       </select>
     </div>
     <div class="btn-container">
-      <button id ="btn_TSP" class="btn route-display">巡回経路表示</button>
+      <button id ="btn_TSP" class="btn route-display">Traveling Route</button>
       <p id="btn_TSP_text" class="textBox hidden"></p>
     </div>
     <div class="btn-container">
-      <button id ="btn_SRP" class="btn route-display">相乗り経路表示</button>
+      <button id ="btn_SRP" class="btn route-display">Share-Ride Route</button>
       <p id="btn_SRP_text" class="textBox hidden"></p>
     </div>
     <div class="radio-type">

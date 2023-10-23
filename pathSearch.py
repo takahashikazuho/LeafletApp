@@ -99,21 +99,74 @@ def travelingPath(points, link, length):
 
 #経由点決定(あまのさん)
 def viterbi_ver1(tsp, candidates, G):
-    positions_SRP = [tsp[0]]
-    for i in range(len(tsp)-1):
-        dist_min = float('inf')
-        node_min = ""
-        for node in candidates[i+1]:
-            if node in list(G.nodes):
-                dist = nx.dijkstra_path_length(G, positions_SRP[i], node)
+    #経由点集合
+    positions_SRP = []
+    #各候補点間の最短経路長を格納
+    path_length = {}
+    path_length[tsp[0]] = 0
+    path_backtrack = {}
+
+    #各候補点間の最短経路長を求める
+    candidates[0] = [tsp[0]]
+    for i in range(len(candidates)):
+        n = i + 1
+        if i == len(candidates)-1:
+            n = 0
+        for node in candidates[n]: 
+            dist_min = float('inf')
+            node_min = ""
+            for node_prev in candidates[i]:
+                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev]
                 if dist < dist_min:
                     dist_min = dist
-                    node_min = node
-        positions_SRP.append(node_min)
+                    node_min = node_prev
+            path_length[node] = dist_min
+            path_backtrack[node] = node_min
+
+    #各候補点間の最短経路を遡ることにより最短経路を得る
+    node = path_backtrack[tsp[0]]
+    for i in range(len(candidates)):
+        positions_SRP.insert(0, node)
+        node = path_backtrack[node]
+
+    return positions_SRP
+
+#経由点決定(あまのさん)
+def viterbi_ver2(tsp, candidates, G):
+    #経由点集合
+    positions_SRP = []
+    #各候補点間の最短経路長を格納
+    path_length = {}
+    path_length[tsp[0]] = 0
+    path_backtrack = {}
+
+    #各候補点間の最短経路長を求める
+    candidates[0] = [tsp[0]]
+    for i in range(len(candidates)):
+        n = i + 1
+        if i == len(candidates)-1:
+            n = 0
+        for node in candidates[n]: 
+            dist_min = float('inf')
+            node_min = ""
+            for node_prev in candidates[i]:
+                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev] + nx.dijkstra_path_length(G, node, tsp[n])
+                if dist < dist_min:
+                    dist_min = dist
+                    node_min = node_prev
+            path_length[node] = dist_min
+            path_backtrack[node] = node_min
+
+    #各候補点間の最短経路を遡ることにより最短経路を得る
+    node = path_backtrack[tsp[0]]
+    for i in range(len(candidates)):
+        positions_SRP.insert(0, node)
+        node = path_backtrack[node]
+
     return positions_SRP
 
 #経由点決定(３点間)
-def viterbi_ver2(tsp, candidates, G):
+def viterbi_ver3(tsp, candidates, G):
     positions_SRP = [tsp[0]]
     for i in range(len(tsp)):
         dist_min = float('inf')
@@ -133,15 +186,13 @@ def viterbi_ver2(tsp, candidates, G):
         positions_SRP.append(node_min)
     positions_SRP[0] = positions_SRP[len(positions_SRP) - 1]
     positions_SRP.pop()
+    positions_SRP[0] = tsp[0]
 
     return positions_SRP
 
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist, value):
-    #pointsとpositionsを辞書にして，tspとpointsを結びつける
-    #巡回順になったpointsを返却する
-
     #通るポイント(都市)
     point_dict = {}
     positions = []
@@ -207,17 +258,19 @@ def sharedRidePath(points, link, length, moveDist, value):
     #各移動先までの経路
     path_positions = []
     positions_SRP_a = []
+    len_walk = 0
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
         point = str(nearestNode(points_SRP[i], link))
         if point != positions_SRP[i]:
             path_str = nx.dijkstra_path(G, point, positions_SRP[i])
+            len_walk += nx.dijkstra_path_length(G, point, positions_SRP[i])
             path_temp = []
             for line in path_str:
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
 
-    return path, length_SRP, points_SRP, positions_SRP_a, path_positions
+    return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
 
 #pointsとかpositionsが何か説明つくる
 #比較用にラジオボタンをつくる

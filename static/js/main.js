@@ -115,7 +115,7 @@ $('#btn_TSP').click(function() {
             polyline = L.polyline(path, { color: 'red' })
             polyline.addTo(map);
             var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_TSP_text.textContent = '経路長：'+len_round+'km';
+            btn_TSP_text.textContent = 'Traveling：'+len_round+'km';
             $('#btn_TSP_text').removeClass('hidden');
         }
     });
@@ -161,6 +161,7 @@ $('#btn_SRP').click(function() {
             var points_SRP = response.points_SRP;
             var positions_SRP = response.positions_SRP;
             var path_positions = response.path_positions;
+            var len_walk = response.len_walk;
 
             // 経路を表示
             polyline2 = L.polyline(path, { color: 'blue' })
@@ -169,8 +170,9 @@ $('#btn_SRP').click(function() {
               polylines[i] = L.polyline(path_positions[i], { color: 'green', opacity: 0.8 })
               polylines[i].addTo(map);
             }
-            var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_SRP_text.textContent = '経路長：' + len_round + 'km';
+            len = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
+            len_walk = Math.round(len_walk * Math.pow(10, 3) ) / Math.pow(10, 3);
+            btn_SRP_text.textContent = 'Traveling：' + len + 'km\nWalking：' + len_walk + 'km';
             $('#btn_SRP_text').removeClass('hidden');
 
             //マーカーに巡回順を追加
