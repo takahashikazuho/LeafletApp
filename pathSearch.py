@@ -131,7 +131,7 @@ def viterbi_ver1(tsp, candidates, G):
 
     return positions_SRP
 
-#経由点決定(あまのさん)
+#経由点決定(乗客移動距離考慮)
 def viterbi_ver2(tsp, candidates, G):
     #経由点集合
     positions_SRP = []
@@ -150,7 +150,7 @@ def viterbi_ver2(tsp, candidates, G):
             dist_min = float('inf')
             node_min = ""
             for node_prev in candidates[i]:
-                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev] + nx.dijkstra_path_length(G, node, tsp[n])
+                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev] + nx.dijkstra_path_length(G, node, tsp[n])  * 0.01
                 if dist < dist_min:
                     dist_min = dist
                     node_min = node_prev
@@ -271,6 +271,3 @@ def sharedRidePath(points, link, length, moveDist, value):
             path_positions.append(path_temp)
 
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
-
-#pointsとかpositionsが何か説明つくる
-#比較用にラジオボタンをつくる
