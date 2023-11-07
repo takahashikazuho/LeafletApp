@@ -26,7 +26,7 @@ def TSP_path():
 
         #データベースから道路データを取得
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
         path, len, _ = pathSearch.travelingPath(points, link, length)
@@ -54,7 +54,7 @@ def SRP_path():
 
         #データベースから道路データを取得
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
         path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value)

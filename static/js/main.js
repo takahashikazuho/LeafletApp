@@ -3,7 +3,7 @@ var mapElement = document.getElementById('map');
 // 初期座標
 var center = [35.16066808015237, 136.92640764889583];
 // 初期ズームレベル
-var zoom_level = 14;
+var zoom_level = 15;
 
 var map = L.map(mapElement,{closePopupOnClick: false}).setView(center, zoom_level);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

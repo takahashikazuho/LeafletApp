@@ -121,13 +121,17 @@ def viterbi_ver1(tsp, candidates, G):
                     dist_min = dist
                     node_min = node_prev
             path_length[node] = dist_min
-            path_backtrack[node] = node_min
+            if node in path_backtrack:
+                path_backtrack[node][n] = node_min
+            else:
+                path_backtrack[node] = {n:node_min}
+            
 
     #各候補点間の最短経路を遡ることにより最短経路を得る
-    node = path_backtrack[tsp[0]]
-    for i in range(len(candidates)):
+    node = path_backtrack[tsp[0]][0]
+    for i in reversed(range(len(candidates))):
         positions_SRP.insert(0, node)
-        node = path_backtrack[node]
+        node = path_backtrack[node][i]
 
     return positions_SRP
 
@@ -150,18 +154,22 @@ def viterbi_ver2(tsp, candidates, G):
             dist_min = float('inf')
             node_min = ""
             for node_prev in candidates[i]:
-                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev] + nx.dijkstra_path_length(G, node, tsp[n])  * 0.01
+                dist = nx.dijkstra_path_length(G, node, node_prev) + path_length[node_prev] + nx.dijkstra_path_length(G, node, tsp[n])  * 0.1
                 if dist < dist_min:
                     dist_min = dist
                     node_min = node_prev
             path_length[node] = dist_min
-            path_backtrack[node] = node_min
+            if node in path_backtrack:
+                path_backtrack[node][n] = node_min
+            else:
+                path_backtrack[node] = {n:node_min}
+            
 
     #各候補点間の最短経路を遡ることにより最短経路を得る
-    node = path_backtrack[tsp[0]]
-    for i in range(len(candidates)):
+    node = path_backtrack[tsp[0]][0]
+    for i in reversed(range(len(candidates))):
         positions_SRP.insert(0, node)
-        node = path_backtrack[node]
+        node = path_backtrack[node][i]
 
     return positions_SRP
 
@@ -229,8 +237,9 @@ def sharedRidePath(points, link, length, moveDist, value):
         connectGraph(G_temp)
         candidate = [p]
         for node in list(G_temp.nodes):
-            if nx.dijkstra_path_length(G_temp, p, node) <= moveDist/1000:
-                candidate.append(node)
+            if node in list(G.nodes):
+                if nx.dijkstra_path_length(G_temp, p, node) <= moveDist/1000:
+                    candidate.append(node)
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
@@ -269,5 +278,9 @@ def sharedRidePath(points, link, length, moveDist, value):
             for line in path_str:
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
+
+    # print(len(tsp))
+    # print(len(candidates))
+    # print(len(positions_SRP))
 
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
