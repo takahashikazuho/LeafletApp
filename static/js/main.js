@@ -11,6 +11,10 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 18
 }).addTo(map);
 
+// csvに書き込んであるデータの範囲
+var bounds = [[35.16966936723668, 136.90265178680423], [35.15224248922456, 136.95080280303958]]
+L.rectangle(bounds, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
+
 const redIcon = L.icon({
   iconUrl: "https://esm.sh/leaflet@1.9.2/dist/images/marker-icon.png",
   iconRetinaUrl: "https://esm.sh/leaflet@1.9.2/dist/images/marker-icon-2x.png",
