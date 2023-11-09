@@ -65,5 +65,5 @@ def SRP_path():
         return jsonify({'message': 'Invalid request method'})
 
 if __name__ == "__main__":
-    app.run(host="133.68.17.14",port=80)
+    app.run(host="133.68.17.14",port=80,threaded=True)
 
