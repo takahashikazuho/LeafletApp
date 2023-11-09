@@ -3,6 +3,7 @@ FlaskでサーバをたててWeb上で地図を表示する
 """
 from flask import Flask, render_template, request, jsonify
 import db, pathSearch
+import threading
 
 app = Flask(__name__)
 
