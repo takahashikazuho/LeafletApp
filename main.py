@@ -8,17 +8,17 @@ import csv
 
 app = Flask(__name__)
 
-dic = {}
+len_dic = {}
 def load_data_csv():
     with open('data.csv', 'r', newline='') as file:
         reader = csv.reader(file, delimiter='\t')
         l = [row for row in reader]
         for elem in l:
-            if elem[0] in dic.keys():
-                dic[elem[0]][elem[1]] = elem[2]
+            if elem[0] in len_dic.keys():
+                len_dic[str(elem[0])][str(elem[1])] = float(elem[2])
             else:
-                dic[elem[0]] = {elem[1] : elem[2]}
-    print(dic['[35.1635255, 136.9400303]']['[35.1636073, 136.9394786]'])
+                len_dic[str(elem[0])] = {str(elem[1]) : float(elem[2])}
+    print("---data loaded---")
 
 @app.route("/")
 def leafletMap():
@@ -32,7 +32,6 @@ def TSP_path():
         points = data['points']
         startPoint = data['startPoint']
         endPoint = data['endPoint']
-        # print(points)
 
         if startPoint:
             points.append(startPoint)
@@ -44,7 +43,7 @@ def TSP_path():
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
-        path, len, _ = pathSearch.travelingPath(points, link, length)
+        path, len, _ = pathSearch.travelingPath(points, link, length, len_dic)
   
         return jsonify({'path': path, 'len': len})
     
@@ -72,7 +71,7 @@ def SRP_path():
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
-        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value)
+        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value, len_dic)
 
         return jsonify({'path': path, 'len': len, 'points_SRP': points_SRP, 'positions_SRP': positions_SRP, 'path_positions': path_positions, 'len_walk': len_walk})
     
