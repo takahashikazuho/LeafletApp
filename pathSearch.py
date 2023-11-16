@@ -70,7 +70,7 @@ def len_SP(G, node1, node2, len_dic):
     except KeyError:
         return nx.dijkstra_path_length(G, node1, node2)
     
-#巡回経路
+#巡回経路(1.5近似アルゴリズム)
 def travelingPath(points, link, length, len_dic):
     #通るポイント(都市)
     positions = []
@@ -103,6 +103,11 @@ def travelingPath(points, link, length, len_dic):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
+
+#2-opt
+def two_opt(positions, len_dic):
+    
+    return
 
 #経由点決定(あまのさん)
 def viterbi_ver1(tsp, candidates, len_dic, G):
@@ -180,30 +185,6 @@ def viterbi_ver2(tsp, candidates, len_dic, G):
 
     return positions_SRP
 
-# #経由点決定(３点間)
-# def viterbi_ver3(tsp, candidates, G):
-#     positions_SRP = [tsp[0]]
-#     for i in range(len(tsp)):
-#         dist_min = float('inf')
-#         node_min = ""
-#         n = i + 1
-#         m = i + 2
-#         if i == len(tsp) - 2:
-#             m = 0
-#         if i == len(tsp) - 1:
-#             n = 0
-#             m = 1
-#         for node in candidates[n]:
-#             dist = nx.dijkstra_path_length(G, positions_SRP[i], node) + nx.dijkstra_path_length(G, tsp[n], node) + nx.dijkstra_path_length(G, tsp[m], node)
-#             if dist < dist_min:
-#                     dist_min = dist
-#                     node_min = node
-#         positions_SRP.append(node_min)
-#     positions_SRP[0] = positions_SRP[len(positions_SRP) - 1]
-#     positions_SRP.pop()
-#     positions_SRP[0] = tsp[0]
-
-#     return positions_SRP
 
 
 #相乗り経路
@@ -244,8 +225,9 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
         connectGraph(G_temp)
         candidate = [p]
         for node in list(G_temp.nodes):
-            if len_SP(G_temp, p, node, len_dic) <= moveDist/1000:
-                candidate.append(node)
+            if node in G.nodes:
+                if len_SP(G_temp, p, node, len_dic) <= moveDist/1000:
+                    candidate.append(node)
         candidates.append(candidate)
 
     #順に候補点から経由点を決定
