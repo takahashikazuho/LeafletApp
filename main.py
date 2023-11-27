@@ -32,6 +32,7 @@ def TSP_path():
         points = data['points']
         startPoint = data['startPoint']
         endPoint = data['endPoint']
+        value = data['value']
 
         if startPoint:
             points.append(startPoint)
@@ -43,7 +44,7 @@ def TSP_path():
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
-        path, len, _ = pathSearch.travelingPath(points, link, length, len_dic)
+        path, len, _ = pathSearch.travelingPath(points, link, length, value, len_dic)
   
         return jsonify({'path': path, 'len': len})
     

@@ -71,7 +71,7 @@ def len_SP(G, node1, node2, len_dic):
         return nx.dijkstra_path_length(G, node1, node2)
     
 #巡回経路(1.5近似アルゴリズム)
-def travelingPath(points, link, length, len_dic):
+def travelingPath(points, link, length, value, len_dic):
     #通るポイント(都市)
     positions = []
     for p in points:
@@ -94,6 +94,9 @@ def travelingPath(points, link, length, len_dic):
     #巡回セールスマン問題を解く
     tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G))
 
+    if value == "type2":
+        tsp = nx.algorithms.approximation.simulated_annealing_tsp(G, tsp)
+
     #巡回順に最短経路を求めて返却
     path = []
     length = 0
@@ -106,7 +109,7 @@ def travelingPath(points, link, length, len_dic):
 
 #2-opt
 def two_opt(positions, len_dic):
-    
+
     return
 
 #経由点決定(あまのさん)

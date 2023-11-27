@@ -102,10 +102,18 @@ $('#btn_TSP').click(function() {
 
   if (btn_TSP_isActive) {
     $(this).addClass('active'); // ボタンが押されている表示にする
+    let elements = document.getElementsByName('type-traveling');
+    let checkValue = '';
+    for (let i = 0; i < elements.length; i++){
+        if (elements.item(i).checked){
+            checkValue = elements.item(i).value;
+        }
+    }
     var requestData = {
             points:points,
             startPoint:startPoint,
-            endPoint:endPoint
+            endPoint:endPoint,
+            value:checkValue
         };
     $.ajax({
         url: '/TSP_path',
