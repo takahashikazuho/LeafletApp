@@ -92,10 +92,13 @@ def travelingPath(points, link, length, value, len_dic):
                 G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
     
     #巡回セールスマン問題を解く
-    tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G))
-
+    if value == "type1":
+        tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G))
     if value == "type2":
-        tsp = nx.algorithms.approximation.simulated_annealing_tsp(G, tsp)
+        init = list(nx.algorithms.approximation.traveling_salesman_problem(G))
+        tsp = nx.algorithms.approximation.simulated_annealing_tsp(G, init)
+    if value == "type3":
+        tsp = nx.algorithms.approximation.simulated_annealing_tsp(G, "greedy")
 
     #巡回順に最短経路を求めて返却
     path = []
