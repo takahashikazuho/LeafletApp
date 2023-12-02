@@ -34,6 +34,8 @@ def TSP_path():
         endPoint = data['endPoint']
         value = data['value']
 
+        print(points)
+
         if startPoint:
             points.append(startPoint)
         if endPoint:

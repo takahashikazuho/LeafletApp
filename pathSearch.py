@@ -5,6 +5,7 @@ import math
 import networkx as nx
 import pyproj
 import db
+from py2opt.routefinder import RouteFinder
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
@@ -70,7 +71,7 @@ def len_SP(G, node1, node2, len_dic):
     except KeyError:
         return nx.dijkstra_path_length(G, node1, node2)
     
-#巡回経路(1.5近似アルゴリズム)
+#巡回経路
 def travelingPath(points, link, length, value, len_dic):
     #通るポイント(都市)
     positions = []
@@ -109,11 +110,6 @@ def travelingPath(points, link, length, value, len_dic):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
-
-#2-opt
-def two_opt(positions, len_dic):
-
-    return
 
 #経由点決定(あまのさん)
 def viterbi_ver1(tsp, candidates, len_dic, G):
@@ -191,7 +187,17 @@ def viterbi_ver2(tsp, candidates, len_dic, G):
 
     return positions_SRP
 
-
+#巡回経路(2-opt)
+def two_opt(positions, len_dic, G):
+    dist_mat = []
+    for p in positions:
+        dist = []
+        for q in positions:
+            dist.append(len_SP(G, p, q, len_dic))
+        dist_mat.append(dist)
+    route_finder = RouteFinder(dist_mat, positions, iterations=10)
+    best_distance, best_route = route_finder.solve()
+    return best_route
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist, value, len_dic):
@@ -238,9 +244,15 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
 
     #順に候補点から経由点を決定
     if value == "type1":
-        positions_SRP = viterbi_ver1(tsp, candidates, len_dic, G)
+        positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
     if value == "type2":
         positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
+        positions_SRP = two_opt(positions_SRP, len_dic, G)
+    if value == "type3":
+        positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
+    if value == "type4":
+        positions_SRP = viterbi_ver1(tsp, candidates, len_dic, G)
+
     
     #巡回順に最短経路を求めて返却
     positions_SRP.append(positions_SRP[0])
@@ -254,6 +266,23 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
     positions_SRP.pop()
 
     #巡回順のクリックされた点の座標
+    # points_SRP = []
+    # cheched = []
+    # for p in positions_SRP:
+    #     dist_min = float('inf')
+    #     point_min = None
+    #     for q in points:
+    #         if q not in cheched:
+    #             node = str(nearestNode(q, link))
+    #             dist = len_SP(G, node, p, len_dic)
+    #             if dist < dist_min:
+    #                 dist_min = dist
+    #                 point_min = q
+    #     points_SRP.append(point_min)
+    #     cheched.append(point_min)
+    # print(len(positions_SRP))
+    # print(len(points))
+
     points_SRP = []
     for p in tsp:
         points_SRP.append(point_dic[p])
