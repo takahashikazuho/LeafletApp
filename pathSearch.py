@@ -111,46 +111,45 @@ def travelingPath(points, link, length, value, len_dic):
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
 
-#経由点決定(あまのさん)
-def viterbi_ver1(tsp, candidates, len_dic, G):
-    #経由点集合
-    positions_SRP = []
-    #各候補点間の最短経路長を格納
-    path_length = {}
-    path_length[tsp[0]] = 0
-    path_backtrack = {}
+# #経由点決定(あまのさん)
+# def viterbi_ver1(tsp, candidates, len_dic, G):
+#     #経由点集合
+#     positions_SRP = []
+#     #各候補点間の最短経路長を格納
+#     path_length = {}
+#     path_length[tsp[0]] = 0
+#     path_backtrack = {}
 
-    #各候補点間の最短経路長を求める
-    candidates[0] = [tsp[0]]
-    for i in range(len(candidates)):
-        n = i + 1
-        if i == len(candidates)-1:
-            n = 0
-        for node in candidates[n]: 
-            dist_min = float('inf')
-            node_min = ""
-            for node_prev in candidates[i]:
-                dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev]
-                if dist < dist_min:
-                    dist_min = dist
-                    node_min = node_prev
-            path_length[node] = dist_min
-            if node in path_backtrack:
-                path_backtrack[node][n] = node_min
-            else:
-                path_backtrack[node] = {n:node_min}
+#     #各候補点間の最短経路長を求める
+#     candidates[0] = [tsp[0]]
+#     for i in range(len(candidates)):
+#         n = i + 1
+#         if i == len(candidates)-1:
+#             n = 0
+#         for node in candidates[n]: 
+#             dist_min = float('inf')
+#             node_min = ""
+#             for node_prev in candidates[i]:
+#                 dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev]
+#                 if dist < dist_min:
+#                     dist_min = dist
+#                     node_min = node_prev
+#             path_length[node] = dist_min
+#             if node in path_backtrack:
+#                 path_backtrack[node][n] = node_min
+#             else:
+#                 path_backtrack[node] = {n:node_min}
             
+#     #各候補点間の最短経路を遡ることにより最短経路を得る
+#     node = path_backtrack[tsp[0]][0]
+#     for i in reversed(range(len(candidates))):
+#         positions_SRP.insert(0, node)
+#         node = path_backtrack[node][i]
 
-    #各候補点間の最短経路を遡ることにより最短経路を得る
-    node = path_backtrack[tsp[0]][0]
-    for i in reversed(range(len(candidates))):
-        positions_SRP.insert(0, node)
-        node = path_backtrack[node][i]
-
-    return positions_SRP
+#     return positions_SRP
 
 #経由点決定(乗客移動距離考慮)
-def viterbi_ver2(tsp, candidates, len_dic, G):
+def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.1):
     #経由点集合
     positions_SRP = []
     #各候補点間の最短経路長を格納
@@ -168,7 +167,7 @@ def viterbi_ver2(tsp, candidates, len_dic, G):
             dist_min = float('inf')
             node_min = ""
             for node_prev in candidates[i]:
-                dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev] + len_SP(G, node, tsp[n], len_dic) * 0.1
+                dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev] + len_SP(G, node, tsp[n], len_dic) * alpha
                 if dist < dist_min:
                     dist_min = dist
                     node_min = node_prev
@@ -178,26 +177,59 @@ def viterbi_ver2(tsp, candidates, len_dic, G):
             else:
                 path_backtrack[node] = {n:node_min}
             
-
     #各候補点間の最短経路を遡ることにより最短経路を得る
     node = path_backtrack[tsp[0]][0]
     for i in reversed(range(len(candidates))):
         positions_SRP.insert(0, node)
         node = path_backtrack[node][i]
 
-    return positions_SRP
+    #移動先の点と移動前の点を対応
+    points_move_dic = {}
+    for i in range(len(tsp)):
+        if positions_SRP[i] in points_move_dic:
+            points_move_dic[positions_SRP[i]].append(tsp[i])
+        else:
+            points_move_dic[positions_SRP[i]] = [tsp[i]]
+    # print(positions_SRP)
+    return positions_SRP, points_move_dic
 
 #巡回経路(2-opt)
-def two_opt(positions, len_dic, G):
-    dist_mat = []
-    for p in positions:
-        dist = []
-        for q in positions:
-            dist.append(len_SP(G, p, q, len_dic))
-        dist_mat.append(dist)
-    route_finder = RouteFinder(dist_mat, positions, iterations=10)
-    best_distance, best_route = route_finder.solve()
-    return best_route
+def two_opt(path, len_dic, G):
+    size = len(path)
+    while True:
+        count = 0
+        for i in range(size - 2):
+            i1 = i + 1
+            for j in range(i + 2, size):
+                if j == size - 1:
+                    j1 = 0
+                else:
+                    j1 = j + 1
+                if i != 0 or j1 != 0:
+                    l1 = len_SP(G, path[i], path[i1], len_dic)
+                    l2 = len_SP(G, path[j], path[j1], len_dic)
+                    l3 = len_SP(G, path[i], path[j], len_dic)
+                    l4 = len_SP(G, path[i1], path[j1], len_dic)
+                    if l1 + l2 > l3 + l4:
+                        # つなぎかえる
+                        new_path = path[i1:j+1]
+                        path[i1:j+1] = new_path[::-1]
+                        count += 1
+        if count == 0: break
+    return path
+
+#巡回経路(焼きなまし)
+def annealing(path, len_dic, G):
+    G_temp = nx.Graph()
+    G_temp.add_nodes_from(path)
+    for u in path:
+        for v in path:
+            if path.index(u) < path.index(v):
+                G_temp.add_edge(u, v, weight=len_SP(G, u, v, len_dic))
+    path.append(path[0])
+    positions_SRP = nx.algorithms.approximation.simulated_annealing_tsp(G_temp, path)
+    positions_SRP.pop()
+    return positions_SRP
 
 #相乗り経路
 def sharedRidePath(points, link, length, moveDist, value, len_dic):
@@ -244,14 +276,15 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
 
     #順に候補点から経由点を決定
     if value == "type1":
-        positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
+        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
     if value == "type2":
-        positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
+        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
         positions_SRP = two_opt(positions_SRP, len_dic, G)
     if value == "type3":
-        positions_SRP = viterbi_ver2(tsp, candidates, len_dic, G)
+        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
+        positions_SRP = annealing(positions_SRP, len_dic, G)
     if value == "type4":
-        positions_SRP = viterbi_ver1(tsp, candidates, len_dic, G)
+        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G, 0)
 
     
     #巡回順に最短経路を求めて返却
@@ -266,26 +299,12 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
     positions_SRP.pop()
 
     #巡回順のクリックされた点の座標
-    # points_SRP = []
-    # cheched = []
-    # for p in positions_SRP:
-    #     dist_min = float('inf')
-    #     point_min = None
-    #     for q in points:
-    #         if q not in cheched:
-    #             node = str(nearestNode(q, link))
-    #             dist = len_SP(G, node, p, len_dic)
-    #             if dist < dist_min:
-    #                 dist_min = dist
-    #                 point_min = q
-    #     points_SRP.append(point_min)
-    #     cheched.append(point_min)
-    # print(len(positions_SRP))
-    # print(len(points))
-
     points_SRP = []
-    for p in tsp:
-        points_SRP.append(point_dic[p])
+    for i in range(len(positions_SRP)):
+        p = points_move_dic[positions_SRP[i]]
+        points_SRP.append(point_dic[p[0]])
+        if len(p) > 1:
+            points_move_dic[positions_SRP[i]].pop(0)
 
     #各移動先までの経路
     path_positions = []
