@@ -1,7 +1,7 @@
 var mapElement = document.getElementById('map');
 
 // 初期座標
-var center = [35.26145939948804, 136.7943334579468];
+var center = [35.174439744015935, 136.94621086120608];
 // 初期ズームレベル
 var zoom_level = 15;
 
@@ -12,7 +12,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // csvに書き込んであるデータの範囲
-var bounds = [[35.26976380918403, 136.77442073822024], [35.252172870242106, 136.81287288665774]]
+var bounds = [[35.18377024562999, 136.9249248504639], [35.16335399687701, 136.96702480316165]]
 L.rectangle(bounds, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
 
 const redIcon = L.icon({
