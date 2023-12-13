@@ -5,7 +5,6 @@ import math
 import networkx as nx
 import pyproj
 import db
-from py2opt.routefinder import RouteFinder
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
@@ -161,13 +160,17 @@ def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.1):
     candidates[0] = [tsp[0]]
     for i in range(len(candidates)):
         n = i + 1
+        r = 0
         if i == len(candidates)-1:
             n = 0
         for node in candidates[n]: 
             dist_min = float('inf')
             node_min = ""
             for node_prev in candidates[i]:
-                dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev] + len_SP(G, node, tsp[n], len_dic) * alpha
+                a = len_SP(G, node, node_prev, len_dic)
+                b = path_length[node_prev]
+                c = len_SP(G, node, tsp[n], len_dic) * alpha
+                dist = c + b + a
                 if dist < dist_min:
                     dist_min = dist
                     node_min = node_prev
