@@ -3,7 +3,7 @@ import networkx as nx
 import db, pathSearch
 
 # データを用意
-points = [[35.18377024562999, 136.9249248504639], [35.16335399687701, 136.96702480316165]]
+points = [[35.18441016255083, 136.9190883636475], [35.15573127979675, 136.97341918945315]]
 y1, x1, y2, x2 = pathSearch.rectangleArea(points)
 link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 G = pathSearch.linkToGraph(link, length)

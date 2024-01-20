@@ -3,17 +3,18 @@ var mapElement = document.getElementById('map');
 // 初期座標
 var center = [35.174439744015935, 136.94621086120608];
 // 初期ズームレベル
-var zoom_level = 15;
+var zoom_level = 14;
 
 var map = L.map(mapElement,{closePopupOnClick: false}).setView(center, zoom_level);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
   maxZoom: 18
 }).addTo(map);
+L.control.scale({imperial:false}).addTo(map);
 
 // csvに書き込んであるデータの範囲
-var bounds = [[35.18377024562999, 136.9249248504639], [35.16335399687701, 136.96702480316165]]
-L.rectangle(bounds, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
+var coordinates = [[35.18441016255083, 136.9190883636475], [35.15573127979675, 136.97341918945315]]
+L.rectangle(coordinates, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
 
 const redIcon = L.icon({
   iconUrl: "https://esm.sh/leaflet@1.9.2/dist/images/marker-icon.png",
@@ -38,6 +39,7 @@ var startMarkerFlag = false;
 var endMarkerFlag = false;
 var btn_TSP_isActive = false;
 var btn_SRP_isActive = false;
+var btn_random_isActive = false;
 
 // マウスクリックで緯度経度の取得とマーカー設置
 function onMapClick(e) {
@@ -229,37 +231,74 @@ $('#btn_SRP').click(function() {
   }
 });
 
-var mamlistboxdiv;
-var mamlistboxa;
-var mamlistbox;
-var mamlistbox_active=false;
-window.addEventListener("load",function(){
-  mamlistboxdiv=document.querySelector(".mamListBox>a>div");
-  mamlistboxa=document.querySelector(".mamListBox>a");
-  mamlistbox=document.querySelector(".mamListBox>select");
-  mamlistboxa.addEventListener("click",function(event){
-    if(mamlistbox_active==false){
-      mamlistbox.style.display = "block";
-      mamlistbox_active=true;
-      mamlistbox.focus();
-    }else{
-      mamlistbox_active=false;
+const random_num = document.getElementById('random_num');
+$('#btn_random').click(function() {
+  btn_random_isActive = !btn_random_isActive; // 状態を反転させる
+
+  if (btn_random_isActive) {
+    $(this).addClass('active'); // ボタンが押されている表示にする
+    var bounds = calculateBounds(coordinates);
+    for (var i = 0; i < random_num.value; i++) {
+      var randomLat = bounds.getSouth() + Math.random() * (bounds.getNorth() - bounds.getSouth());
+      var randomLng = bounds.getWest() + Math.random() * (bounds.getEast() - bounds.getWest());
+
+      marker = L.marker([randomLat, randomLng]).addTo(map);
+      points.push([randomLat, randomLng]);
+      markers.push(marker);
     }
-  });
-  mamlistbox.addEventListener("blur",function(){
-    mamlistbox.style.display = "none";
-  });
-  mamlistbox.addEventListener("click",function(){
-    mamlistboxdiv.innerHTML = mamlistbox.querySelectorAll('option')[mamlistbox.selectedIndex].innerHTML;
-    mamlistbox_active=false;
-    mamlistbox.blur();
-    markerType = mamlistbox.value;
-  });
-  document.documentElement.addEventListener("click",mamListboxOtherClick);
+  } else {
+    $(this).removeClass('active'); // ボタンが押されていない表示にする
+    if (markers) {
+      for(var i=0; i<markers.length; i++) {
+        map.removeLayer(markers[i]);
+      }
+      points = []
+    }
+  }
 });
-function mamListboxOtherClick(event){
-  if(event.target==mamlistboxdiv){return;}
-  if(event.target==mamlistboxa){return;}
-  if(event.target==mamlistbox){return;}
-  mamlistbox_active=false;
-}
+
+function calculateBounds(coords) {
+  var minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  coords.forEach(function(coord) {
+      minLat = Math.min(minLat, coord[0]);
+      maxLat = Math.max(maxLat, coord[0]);
+      minLng = Math.min(minLng, coord[1]);
+      maxLng = Math.max(maxLng, coord[1]);
+  });
+  return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
+};
+
+// var mamlistboxdiv;
+// var mamlistboxa;
+// var mamlistbox;
+// var mamlistbox_active=false;
+// window.addEventListener("load",function(){
+//   mamlistboxdiv=document.querySelector(".mamListBox>a>div");
+//   mamlistboxa=document.querySelector(".mamListBox>a");
+//   mamlistbox=document.querySelector(".mamListBox>select");
+//   mamlistboxa.addEventListener("click",function(event){
+//     if(mamlistbox_active==false){
+//       mamlistbox.style.display = "block";
+//       mamlistbox_active=true;
+//       mamlistbox.focus();
+//     }else{
+//       mamlistbox_active=false;
+//     }
+//   });
+//   mamlistbox.addEventListener("blur",function(){
+//     mamlistbox.style.display = "none";
+//   });
+//   mamlistbox.addEventListener("click",function(){
+//     mamlistboxdiv.innerHTML = mamlistbox.querySelectorAll('option')[mamlistbox.selectedIndex].innerHTML;
+//     mamlistbox_active=false;
+//     mamlistbox.blur();
+//     markerType = mamlistbox.value;
+//   });
+//   document.documentElement.addEventListener("click",mamListboxOtherClick);
+// });
+// function mamListboxOtherClick(event){
+//   if(event.target==mamlistboxdiv){return;}
+//   if(event.target==mamlistboxa){return;}
+//   if(event.target==mamlistbox){return;}
+//   mamlistbox_active=false;
+// }

@@ -11,7 +11,13 @@
     <div class="textForm">
       <p><label class="formLabel">Maximum Walking Distance(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
     </div>
-    <div class="btn mamListBox">
+    <div class="btn-container">
+      <button id ="btn_random" class="btn route-display">Random Points</button>
+    </div>
+    <div class="textForm">
+      <input type="number" value="1" id="random_num" class="formBox" min="1"></label>
+    </div>
+    <!-- <div class="btn mamListBox">
       <a href="javascript:void(0)">
         <div>Transit Point</div>
       </a>
@@ -20,7 +26,7 @@
         <option value="start">Departure Point</option>
         <option value="end">Arrival Point</option>
       </select>
-    </div>
+    </div> -->
     <div class="btn-container">
       <button id ="btn_TSP" class="btn route-display">Traveling Route</button>
       <p id="btn_TSP_text" class="textBox hidden"></p>
@@ -35,9 +41,9 @@
       <p id="btn_SRP_text" class="textBox hidden"></p>
     </div>
     <div class="radio-type">
-      <label><input type="radio" name="type" value="type1" checked>new method</label>
+      <label><input type="radio" name="type" value="type2" checked>new method</label>
       <label><input type="radio" name="type" value="type4">old method</label>
-      <label><input type="radio" name="type" value="type2">2-opt</label>
+      <label><input type="radio" name="type" value="type1">before2-opt</label>
       <label><input type="radio" name="type" value="type3">annealing</label>
     </div>
   </div>
