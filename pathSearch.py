@@ -148,7 +148,7 @@ def travelingPath(points, link, length, value, len_dic):
 #     return positions_SRP
 
 #経由点決定(乗客移動距離考慮)
-def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.1):
+def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.01):
     #経由点集合
     positions_SRP = []
     #各候補点間の最短経路長を格納

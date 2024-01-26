@@ -4,22 +4,13 @@ FlaskでサーバをたててWeb上で地図を表示する
 from flask import Flask, render_template, request, jsonify
 import db, pathSearch
 import threading
-import csv
 import time
 import networkx as nx
 
 app = Flask(__name__)
 
 len_dic = {}
-def load_data_csv():
-    # with open('data.csv', 'r', newline='') as file:
-    #     reader = csv.reader(file, delimiter='\t')
-    #     l = [row for row in reader]
-    #     for elem in l:
-    #         if elem[0] in len_dic.keys():
-    #             len_dic[str(elem[0])][str(elem[1])] = float(elem[2])
-    #         else:
-    #             len_dic[str(elem[0])] = {str(elem[1]) : float(elem[2])}
+def load_data():
     global len_dic
     points = [[35.18441016255083, 136.9190883636475], [35.15573127979675, 136.97341918945315]]
     y1, x1, y2, x2 = pathSearch.rectangleArea(points)
@@ -93,7 +84,7 @@ def SRP_path():
         return jsonify({'message': 'Invalid request method'})
 
 if __name__ == "__main__":
-    data_loading_thread = threading.Thread(target=load_data_csv)
+    data_loading_thread = threading.Thread(target=load_data)
     data_loading_thread.start()
     app.run(host="133.68.17.14",port=80,threaded=True)
     data_loading_thread.join()
