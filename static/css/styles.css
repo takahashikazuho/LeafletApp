@@ -118,6 +118,7 @@
 }
 
 .formBox {
+  z-index: 1000;
   width: 50px;
 }
 
