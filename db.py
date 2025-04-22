@@ -6,7 +6,7 @@ import psycopg2
 DBNAME = "osm_road_db"
 USER = "postgres"
 PASS = "usadasql"
-URL = "rain2.yamamoto.nitech.ac.jp"
+URL = "rain-vm.yamamoto.nitech.ac.jp"
 PORT = 5432
 
 #矩形範囲の道路データを取得する

@@ -1,2 +1,5 @@
 __pycache__/*
 data.csv
+test.ipynb
+cache/*
+osmnx_nagoya.db

@@ -5,6 +5,7 @@ import math
 import networkx as nx
 import pyproj
 import db
+import heapq
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
@@ -333,27 +334,282 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
 
 #########################################################################################
-def init_vehicle(G, Q, st, len_dic):
-    d = {}
-    pie = {}
-    T = {}
-    for node in G.nodes:
-        d[node] = float('inf')
-        pie[node] = None
-        T[node] = None
-    d[st] = 0
-    for q in Q:
-        d[st] += len_SP(G, q[0], st, len_dic) + len_SP(G, q[1], st, len_dic)
-    T[st] = {(st, 0)}
-    for q in Q:
-        T[st].add((q[0],len_SP(G, q[0], st, len_dic)))
-        T[st].add((q[1],len_SP(G, q[1], st, len_dic)))
-    return d, pie, T
+class Routing:
+    def __init__(self, link, length):
+        self.link = link
+        self.length = length
+        self.G = linkToGraph(self.link, self.length)
+        connectGraph(self.G)
+        self.len_dic = dict(nx.all_pairs_dijkstra_path_length(self.G))
 
-def ORIS(G, Q, st, en, moveDist, len_dic):
-    d, pie, T = init_vehicle(G, Q, st, len_dic)
+    def SPC(self, s, t):
+        try:
+            return self.len_dic[s][t]
+        except KeyError:
+            return nx.dijkstra_path_length(self.G, s, t)
 
-    return
+    def init_vehicle(self, Q, st, SPC_cache):
+        d = {}
+        pie = {}
+        T = {}
+        mark = {}
+        stop = {}
+
+        for node in self.G.nodes:
+            d[node] = float('inf')
+            pie[node] = None
+            T[node] = set()
+            mark[node] = False
+            stop[node] = False
+
+        d[st] = 0
+        T[st].add((st, 0))
+
+        for q in Q:
+            d[st] += SPC_cache.get((q[0], st), 0) + SPC_cache.get((q[1], st), 0)
+
+        for q in Q:
+            T[st].add((q[0], SPC_cache.get((q[0], st), 0)))
+            T[st].add((q[1], SPC_cache.get((q[1], st), 0)))
+
+        return d, pie, T, mark, stop
+
+    def relax_vehicle(self, u, v, c, st, Q, SPC_cache, d, pie, T, PQ):
+        if u not in T or not any(item[0] == st for item in T[u]):
+            return d, pie, T, PQ  # Vehicle cost not found for u
+
+        vehicle_cost_pair = next(item for item in T[u] if item[0] == st)
+        cv = vehicle_cost_pair[1]
+        d_temp_v = cv + c
+        T_temp_v = {(st, cv + c)}
+
+        for si, di in Q:
+            cs = None
+            cd = None
+            if u in T:
+                si_pair = next((item for item in T[u] if item[0] == si), None)
+                di_pair = next((item for item in T[u] if item[0] == di), None)
+                if si_pair:
+                    cs = si_pair[1]
+                if di_pair:
+                    cd = di_pair[1]
+
+            cost_si_v = SPC_cache.get((si, v), float('inf'))
+            cost_di_v = SPC_cache.get((di, v), float('inf'))
+
+            if cs is not None and cd is not None:
+                if cs + min(cd, cost_di_v) < cost_si_v + cost_di_v:
+                    d_temp_v += cs + min(cd, cost_di_v)
+                    T_temp_v.add((si, cs))
+                    T_temp_v.add((di, min(cd, cost_di_v)))
+                else:
+                    d_temp_v += cost_si_v + cost_di_v
+                    T_temp_v.add((si, cost_si_v))
+                    T_temp_v.add((di, cost_di_v))
+            else:
+                # クエリ点がまだ T[u] に存在しない場合の処理
+                d_temp_v += cost_si_v + cost_di_v
+                T_temp_v.add((si, cost_si_v))
+                T_temp_v.add((di, cost_di_v))
+
+        if d_temp_v < d[v]:
+            d[v] = d_temp_v
+            pie[v] = u
+            T[v] = T_temp_v
+            in_pq = False
+            for cost, node in PQ:
+                if node == v:
+                    in_pq = True
+                    break
+            if in_pq:
+                # 優先度キュー内のキーを減少 (再ヒープ化)
+                temp_pq = [(cost, node) for cost, node in PQ if node != v]
+                temp_pq.append((d[v], v))
+                heapq.heapify(temp_pq)
+                PQ[:] = temp_pq
+            else:
+                heapq.heappush(PQ, (d[v], v))
+
+        return d, pie, T, PQ
+
+    def vehicle_stops(self, st, en, pie, Q, SPC_cache):
+        if st not in self.G.nodes or en not in self.G.nodes:
+            return []
+
+        vehicle_path_nodes = set()
+        current = en
+        while current is not None:
+            vehicle_path_nodes.add(current)
+            if current == st:
+                break
+            current = pie.get(current)
+
+        if st not in vehicle_path_nodes:
+            return [] # 始点から終点への経路が存在しない
+
+        stop_points = {node: False for node in self.G.nodes}
+
+        for si, di in Q:
+            if si in self.G.nodes and di in self.G.nodes:
+                nearest_si = None
+                min_dist_si = float('inf')
+                nearest_di = None
+                min_dist_di = float('inf')
+
+                for vp_node in vehicle_path_nodes:
+                    dist_si_vp = SPC_cache.get((si, vp_node), float('inf'))
+                    if dist_si_vp < min_dist_si:
+                        min_dist_si = dist_si_vp
+                        nearest_si = vp_node
+                    elif dist_si_vp == min_dist_si and nearest_si is not None and SPC_cache.get((vp_node, st), float('inf')) < SPC_cache.get((nearest_si, st), float('inf')):
+                        nearest_si = vp_node
+
+                    dist_di_vp = SPC_cache.get((di, vp_node), float('inf'))
+                    if dist_di_vp < min_dist_di:
+                        min_dist_di = dist_di_vp
+                        nearest_di = vp_node
+                    elif dist_di_vp == min_dist_di and nearest_di is not None and SPC_cache.get((vp_node, st), float('inf')) < SPC_cache.get((nearest_di, st), float('inf')):
+                        nearest_di = vp_node
+
+                if nearest_si:
+                    stop_points[nearest_si] = True
+                if nearest_di:
+                    stop_points[nearest_di] = True
+
+        path = [en]
+        v = pie.get(en)
+        while v != st and v is not None:
+            if stop_points.get(v, False):
+                path.insert(0, v)
+            v = pie.get(v)
+        path.insert(0, st)
+
+        return path
+
+    def find_optimal_stops(self, Q, st, en):
+        """
+        最適な停留所シーケンスを見つけるメイン関数（無向グラフ版）。
+
+        Args:
+            Q (list): クエリのリスト [(start_i, end_i), ...]。
+            st: 開始停留所。
+            en: 終了停留所。
+
+        Returns:
+            list: 最適な停留所シーケンス。
+        """
+        # 4.3, 4.4 無向グラフなので転置は不要。各クエリの始点と終点からの最短経路コストを計算
+        SPC_cache = {}
+        for si, di in Q:
+            if (si, en) not in SPC_cache:
+                try:
+                    SPC_cache[(si, en)] = nx.dijkstra_path_length(self.G, si, en)
+                except nx.NetworkXNoPath:
+                    SPC_cache[(si, en)] = float('inf')
+            if (di, en) not in SPC_cache:
+                try:
+                    SPC_cache[(di, en)] = nx.dijkstra_path_length(self.G, di, en)
+                except nx.NetworkXNoPath:
+                    SPC_cache[(di, en)] = float('inf')
+            if (si, st) not in SPC_cache:
+                try:
+                    SPC_cache[(si, st)] = nx.dijkstra_path_length(self.G, si, st)
+                except nx.NetworkXNoPath:
+                    SPC_cache[(si, st)] = float('inf')
+            if (di, st) not in SPC_cache:
+                try:
+                    SPC_cache[(di, st)] = nx.dijkstra_path_length(self.G, di, st)
+                except nx.NetworkXNoPath:
+                    SPC_cache[(di, st)] = float('inf')
+            for node in self.G.nodes:
+                if (si, node) not in SPC_cache:
+                    try:
+                        SPC_cache[(si, node)] = nx.dijkstra_path_length(self.G, si, node)
+                    except nx.NetworkXNoPath:
+                        SPC_cache[(si, node)] = float('inf')
+                if (di, node) not in SPC_cache:
+                    try:
+                        SPC_cache[(di, node)] = nx.dijkstra_path_length(self.G, di, node)
+                    except nx.NetworkXNoPath:
+                        SPC_cache[(di, node)] = float('inf')
+                if (node, st) not in SPC_cache:
+                    try:
+                        SPC_cache[(node, st)] = nx.dijkstra_path_length(self.G, node, st)
+                    except nx.NetworkXNoPath:
+                        SPC_cache[(node, st)] = float('inf')
+
+
+        # 4.5 (d, π, T) ← INIT-VEHICLE(G, Q, st, SPC, SPC_T)
+        # SPC_T の代わりに SPC_cache を渡すように変更
+        d, pie, T, mark, _ = self.init_vehicle(Q, st, SPC_cache)
+
+        # 4.6 PQ ← G.V
+        PQ = [(d[node], node) for node in self.G.nodes]
+        heapq.heapify(PQ)
+        pq_nodes = set(self.G.nodes)
+
+        # 4.7 while PQ ≠ ∅ do
+        while PQ:
+            # 4.8 u ← EXTRACT-MIN(PQ)
+            current_distance, u = heapq.heappop(PQ)
+            if u not in pq_nodes:
+                continue
+            pq_nodes.remove(u)
+
+            # 4.9 mark(u) ← True
+            mark[u] = True
+
+            # 4.10 for each node v ∈ G.Adj[u]
+            for v in self.G.neighbors(u):
+                # 4.11 if mark(v) = False then
+                if not mark[v]:
+                    # 4.12 (d, π, T, PQ) ← RELAX-VEHICLE(u, v, w(u, v), st, Q, SPC, SPC_T, d, π, T, PQ)
+                    weight = self.G[u][v].get('weight', 1)
+                    # SPC_T_cache の代わりに SPC_cache を渡す
+                    d, pie, T, PQ = self.relax_vehicle(u, v, weight, st, Q, SPC_cache, d, pie, T, PQ)
+
+        # 4.13 P ← VEHICLE-STOPS(st, en, π, T)
+        P = self.vehicle_stops(st, en, pie, Q, SPC_cache)
+
+        # 4.14 return P
+        path = []
+        length_path = 0
+        for i in range(len(P)-1):
+            path_str = nx.dijkstra_path(self.G, P[i], P[i+1])
+            length_path += len_SP(self.G, P[i], P[i+1], self.len_dic)
+            for line in path_str:
+                path.append([float(x) for x in line.strip('[]').split(',')])
+        position = []
+        for line in P:
+                position.append([float(x) for x in line.strip('[]').split(',')])
+        return path, length_path, position
+
+    def init_vehicle(self, Q, st, SPC_cache):
+        d = {}
+        pie = {}
+        T = {}
+        mark = {}
+        stop = {}
+
+        for node in self.G.nodes:
+            d[node] = float('inf')
+            pie[node] = None
+            T[node] = set()
+            mark[node] = False
+            stop[node] = False
+
+        d[st] = 0
+        T[st].add((st, 0))
+
+        for q in Q:
+            d[st] += SPC_cache.get((q[0], st), 0) + SPC_cache.get((q[1], st), 0)
+
+        for q in Q:
+            T[st].add((q[0], SPC_cache.get((q[0], st), 0)))
+            T[st].add((q[1], SPC_cache.get((q[1], st), 0)))
+
+        return d, pie, T, mark, stop
+
 
 #########################################################################################
 def create_data_model(points, link, length, len_dic):

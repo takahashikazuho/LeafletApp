@@ -125,18 +125,33 @@ $('#btn_TSP').click(function() {
         success: function(response) {
             var path = response.path;
             var len = response.len;
+            var position = response.position;
             // 経路を表示
             polyline = L.polyline(path, { color: 'red' })
             polyline.addTo(map);
             var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
             btn_TSP_text.textContent = 'Traveling：'+len_round+'km';
             $('#btn_TSP_text').removeClass('hidden');
+            //移動先の点を表示
+            var option = {
+              radius: 5,       
+              fillColor: "blue", 
+              color: "blue",     
+              opacity: 1,         
+              fillOpacity: 1
+            }
+            for(var i=0; i<position.length; i++) {
+              circleMarkers[i] = L.circleMarker(position[i], option).addTo(map);
+            }
         }
     });
   } else {
     $(this).removeClass('active'); // ボタンが押されていない表示にする
     if (polyline) {
       map.removeLayer(polyline); // polyline を地図から削除
+      for(var i=0; i<circleMarkers.length; i++) {
+        map.removeLayer(circleMarkers[i]);
+      }
     }
     $('#btn_TSP_text').addClass('hidden');
   }
@@ -268,37 +283,37 @@ function calculateBounds(coords) {
   return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
 };
 
-// var mamlistboxdiv;
-// var mamlistboxa;
-// var mamlistbox;
-// var mamlistbox_active=false;
-// window.addEventListener("load",function(){
-//   mamlistboxdiv=document.querySelector(".mamListBox>a>div");
-//   mamlistboxa=document.querySelector(".mamListBox>a");
-//   mamlistbox=document.querySelector(".mamListBox>select");
-//   mamlistboxa.addEventListener("click",function(event){
-//     if(mamlistbox_active==false){
-//       mamlistbox.style.display = "block";
-//       mamlistbox_active=true;
-//       mamlistbox.focus();
-//     }else{
-//       mamlistbox_active=false;
-//     }
-//   });
-//   mamlistbox.addEventListener("blur",function(){
-//     mamlistbox.style.display = "none";
-//   });
-//   mamlistbox.addEventListener("click",function(){
-//     mamlistboxdiv.innerHTML = mamlistbox.querySelectorAll('option')[mamlistbox.selectedIndex].innerHTML;
-//     mamlistbox_active=false;
-//     mamlistbox.blur();
-//     markerType = mamlistbox.value;
-//   });
-//   document.documentElement.addEventListener("click",mamListboxOtherClick);
-// });
-// function mamListboxOtherClick(event){
-//   if(event.target==mamlistboxdiv){return;}
-//   if(event.target==mamlistboxa){return;}
-//   if(event.target==mamlistbox){return;}
-//   mamlistbox_active=false;
-// }
+var mamlistboxdiv;
+var mamlistboxa;
+var mamlistbox;
+var mamlistbox_active=false;
+window.addEventListener("load",function(){
+  mamlistboxdiv=document.querySelector(".mamListBox>a>div");
+  mamlistboxa=document.querySelector(".mamListBox>a");
+  mamlistbox=document.querySelector(".mamListBox>select");
+  mamlistboxa.addEventListener("click",function(event){
+    if(mamlistbox_active==false){
+      mamlistbox.style.display = "block";
+      mamlistbox_active=true;
+      mamlistbox.focus();
+    }else{
+      mamlistbox_active=false;
+    }
+  });
+  mamlistbox.addEventListener("blur",function(){
+    mamlistbox.style.display = "none";
+  });
+  mamlistbox.addEventListener("click",function(){
+    mamlistboxdiv.innerHTML = mamlistbox.querySelectorAll('option')[mamlistbox.selectedIndex].innerHTML;
+    mamlistbox_active=false;
+    mamlistbox.blur();
+    markerType = mamlistbox.value;
+  });
+  document.documentElement.addEventListener("click",mamListboxOtherClick);
+});
+function mamListboxOtherClick(event){
+  if(event.target==mamlistboxdiv){return;}
+  if(event.target==mamlistboxa){return;}
+  if(event.target==mamlistbox){return;}
+  mamlistbox_active=false;
+}
