@@ -333,6 +333,84 @@ def sharedRidePath(points, link, length, moveDist, value, len_dic):
 
     return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
 
+def reorder_tsp_st_to_en(lst, st, en):
+    n = len(lst)
+    idx_st = lst.index(st)
+    idx_en = lst.index(en)
+    # stとenが隣接していない場合はエラー
+    if abs(idx_st - idx_en) != 1:
+        raise ValueError('stとenは隣接していません')
+    # 巡回的にリストを回転
+    if (idx_st + 1) % n == idx_en:
+        # st, en の順
+        # st ... en ... (巡回的) ... st
+        # 出力: st, 残り逆順, en
+        between = []
+        # en+1から末尾→先頭からst-1まで
+        i = (idx_en+1) % n
+        while i != idx_st:
+            between.append(lst[i])
+            i = (i+1) % n
+        return [st] + between[::-1] + [en]
+    elif (idx_en + 1) % n == idx_st:
+        # en, st の順
+        between = []
+        i = (idx_st+1) % n
+        while i != idx_en:
+            between.append(lst[i])
+            i = (i+1) % n
+        return [st] + between + [en]
+    else:
+        raise ValueError('隣接判定ロジックエラー')
+
+def path_TSP(st, en, points, link, length, len_dic):
+    #通るポイント(都市)
+    positions = []
+    for p in points:
+        positions.append(str(nearestNode(p, link)))
+    st = str(nearestNode(st, link))
+    en = str(nearestNode(en, link))
+
+    #巡回セールスマン問題のためのグラフ
+    G = nx.Graph()
+    for i in range(len(positions)):
+        G.add_node(positions[i], index=i)
+    G.add_node(st, index=111)
+    G.add_node(en, index=999)
+    # G.add_nodes_from(positions)
+
+    #都市間の最短経路を求めるためのグラフ
+    G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
+
+    #都市間の最短経路を求めて，Gのエッジとする
+    for u in positions:
+        for v in positions:
+            if positions.index(u) < positions.index(v):
+                if (u == st and v == en) or (u == en and v == st):
+                    continue
+                G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+
+    #st,en間に0エッジを追加
+    G.add_edge(st, en, weight=0.001)
+    
+    #巡回セールスマン問題を解く
+    tsp = list(nx.algorithms.approximation.simulated_annealing_tsp(G, init_cycle="greedy"))
+    print([G.nodes[node]['index'] for node in tsp])
+    tsp.pop()
+    tsp = reorder_tsp_st_to_en(tsp, st, en)
+    print([G.nodes[node]['index'] for node in tsp])
+
+    #巡回順に最短経路を求めて返却
+    path = []
+    length = 0
+    for i in range(len(tsp)-1):
+        path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
+        length += len_SP(G_temp, tsp[i], tsp[i+1], len_dic)
+        for line in path_str:
+            path.append([float(x) for x in line.strip('[]').split(',')])
+    return path, length
+
 #########################################################################################
 class Routing:
     def __init__(self, link, length):

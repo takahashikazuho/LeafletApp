@@ -33,31 +33,46 @@ def TSP_path():
         endPoint = data['endPoint']
         value = data['value']
 
-        print(points)
-
+        #データベースから道路データを取得
         P = points
         if startPoint:
             P.append(startPoint)
         if endPoint:
             P.append(endPoint)
-
-        #データベースから道路データを取得
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
-        p_temp = []
-        for p in points:
-            p_temp.append(pathSearch.nearestNode(p, link))
-        points = p_temp
 
-        # #経路探索
-        # path, len, _ = pathSearch.travelingPath(points, link, length, value, len_dic)
-        query = []
-        for i in range(0, len(points) - 1, 2):
-            query.append((str(points[i]), str(points[i + 1])))
+        #TSPの場合
+        if value == "type1":
+            if startPoint:
+                points.append(startPoint)
+            if endPoint:
+                points.append(endPoint)
+            path, len_path, _ = pathSearch.travelingPath(points, link, length, value, len_dic)
+            return jsonify({'path': path, 'len': len_path})
+        
+        #パス型TSPの場合
+        if value == "type2":
+            path, len_path = pathSearch.path_TSP(startPoint, endPoint, points, link, length, len_dic)
+            return jsonify({'path': path, 'len': len_path})
+        
+        #ORISの場合
+        if value == "type3":
+            p_temp = []
+            for p in points:
+                p_temp.append(pathSearch.nearestNode(p, link))
+            points = p_temp
 
-        R = pathSearch.Routing(link, length)
-        path, len_, position = R.find_optimal_stops(query, str(pathSearch.nearestNode(startPoint, link)), str(pathSearch.nearestNode(endPoint, link)))
-        return jsonify({'path': path, 'len': len_, 'position': position})
+            #pointsの先頭から二個組ずつをクエリとする
+            query = []
+            for i in range(0, len(points) - 1, 2):
+                query.append((str(points[i]), str(points[i + 1])))
+
+            R = pathSearch.Routing(link, length)
+            path, len_, position = R.find_optimal_stops(query, str(pathSearch.nearestNode(startPoint, link)), str(pathSearch.nearestNode(endPoint, link)))
+
+            return jsonify({'path': path, 'len': len_, 'position': position})
+        
     
     else:
         return jsonify({'message': 'Invalid request method'})
