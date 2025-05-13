@@ -6,6 +6,7 @@ import networkx as nx
 import pyproj
 import db
 import heapq
+import itertools
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
@@ -396,10 +397,8 @@ def path_TSP(st, en, points, link, length, len_dic):
     
     #巡回セールスマン問題を解く
     tsp = list(nx.algorithms.approximation.simulated_annealing_tsp(G, init_cycle="greedy"))
-    print([G.nodes[node]['index'] for node in tsp])
     tsp.pop()
     tsp = reorder_tsp_st_to_en(tsp, st, en)
-    print([G.nodes[node]['index'] for node in tsp])
 
     #巡回順に最短経路を求めて返却
     path = []
@@ -410,6 +409,126 @@ def path_TSP(st, en, points, link, length, len_dic):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length
+
+def path_TSP_full_search(st, en, points, link, length, len_dic):
+    # 通るポイント（都市）のノード名リスト作成
+    positions = []
+    for p in points:
+        positions.append(str(nearestNode(p, link)))
+
+    st = str(nearestNode(st, link))
+    en = str(nearestNode(en, link))
+    
+    # グラフ作成
+    G = nx.Graph()
+    for i, pos in enumerate(positions):
+        G.add_node(pos, index=i)
+    G.add_node(st, index=111)
+    G.add_node(en, index=999)
+
+    # 都市間距離グラフの準備
+    G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
+
+    # 都市間の最短経路によるグラフ構築
+    all_points = positions + [st, en]
+    for u, v in itertools.combinations(all_points, 2):
+        if (u == st and v == en) or (u == en and v == st):
+            continue
+        # len_SP: ノードuからvまでの最短パス長
+        G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+
+    # 集合
+    keypoints = positions  # ハミルトン路で必須経由するべきノード
+
+    # 始点・終点は固定したい場合
+    # (順序 [st, ???..., en] に限定)
+    best_order = None
+    best_length = float('inf')
+    
+    # end ノードは経路の最後、start ノードは最初
+    inner_points = [p for p in keypoints if p != st and p != en]
+    for perm in itertools.permutations(inner_points):
+        order = [st] + list(perm) + [en]
+        total = 0
+        feasible = True
+        for i in range(len(order)-1):
+            try:
+                dist = nx.shortest_path_length(G, source=order[i], target=order[i+1], weight='weight')
+            except nx.NetworkXNoPath:
+                feasible = False
+                break
+            total += dist
+        if feasible and total < best_length:
+            best_length = total
+            best_order = order
+    
+    # 巡回順で最短経路を復元
+    all_path = []
+    length_sum = 0
+    if best_order is not None:
+        for i in range(len(best_order)-1):
+            path_str = nx.dijkstra_path(G_temp, best_order[i], best_order[i+1])
+            length_sum += len_SP(G_temp, best_order[i], best_order[i+1], len_dic)
+            for line in path_str:
+                all_path.append([float(x) for x in line.strip('[]').split(',')])
+
+    return all_path, length_sum
+
+def path_TSP_greedy(st, en, points, link, length, len_dic):
+    # 通るポイント（都市）のノード名リスト作成
+    positions = []
+    for p in points:
+        positions.append(str(nearestNode(p, link)))
+    st = str(nearestNode(st, link))
+    en = str(nearestNode(en, link))
+
+    # 都市ノード集合
+    all_cities = set(positions)
+    if st not in all_cities:
+        all_cities.add(st)
+    if en not in all_cities:
+        all_cities.add(en)
+    all_cities = list(all_cities)
+
+    # 都市間距離グラフ
+    G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
+
+    # ハミルトン路・近似解
+    current = st
+    visited = set([current])
+    order = [current]
+
+    # 出発地から各都市へ貪欲に
+    while len(visited) < len(all_cities):
+        if len(visited) == len(all_cities)-1 and en not in visited:
+            nxt = en  # 残るは終点enのみならそこへ行く
+        else:
+            # 未訪問都市のうち最も近いもの
+            candidates = [city for city in all_cities if city not in visited and city != en]
+            if not candidates:  # enしか残ってない場合例外処理
+                break
+            # 距離計算（len_SPでコストを取得）
+            distances = [len_SP(G_temp, current, city, len_dic) for city in candidates]
+            nxt = candidates[distances.index(min(distances))]
+        order.append(nxt)
+        visited.add(nxt)
+        current = nxt
+
+    # 最後に必ずenが順路に入っていることを確認
+    if order[-1] != en:
+        order.append(en)
+
+    # 巡回順に最短経路に変換
+    path = []
+    length_sum = 0
+    for i in range(len(order)-1):
+        path_str = nx.dijkstra_path(G_temp, order[i], order[i+1])
+        length_sum += len_SP(G_temp, order[i], order[i+1], len_dic)
+        for line in path_str:
+            path.append([float(x) for x in line.strip('[]').split(',')])
+    return path, length_sum
 
 #########################################################################################
 class Routing:

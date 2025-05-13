@@ -56,8 +56,16 @@ def TSP_path():
             path, len_path = pathSearch.path_TSP(startPoint, endPoint, points, link, length, len_dic)
             return jsonify({'path': path, 'len': len_path})
         
-        #ORISの場合
         if value == "type3":
+            path, len_path = pathSearch.path_TSP_full_search(startPoint, endPoint, points, link, length, len_dic)
+            return jsonify({'path': path, 'len': len_path})
+        
+        if value == "type4":
+            path, len_path = pathSearch.path_TSP_greedy(startPoint, endPoint, points, link, length, len_dic)
+            return jsonify({'path': path, 'len': len_path})
+        
+        #ORISの場合
+        if value == "ORIS":
             p_temp = []
             for p in points:
                 p_temp.append(pathSearch.nearestNode(p, link))

@@ -49,7 +49,7 @@ function onMapClick(e) {
         break;
       }
       startMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onStartMarkerClick).addTo(map)
-                      .bindPopup('出発地点',{autoClose:false}).openPopup();
+                      .bindPopup(' start',{autoClose:false}).openPopup();
       startPoint = [e.latlng.lat, e.latlng.lng];
       startMarkerFlag = true;
       markers.push(marker);
@@ -64,7 +64,7 @@ function onMapClick(e) {
         break;
       }
       endMarker = L.marker(e.latlng,{ icon: redIcon }).on('click', onEndMarkerClick).addTo(map)
-                    .bindPopup('到着地点',{autoClose:false}).openPopup();
+                    .bindPopup('  end',{autoClose:false}).openPopup();
       endPoint = [e.latlng.lat, e.latlng.lng];
       endMarkerFlag = true;
       markers.push(marker);
