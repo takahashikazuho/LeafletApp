@@ -98,7 +98,7 @@ function onEndMarkerClick(e) {
 }
 
 const btn_TSP_text = document.getElementById('btn_TSP_text');
-// 巡回経路探索ボタンのクリックイベント
+// 経路探索ボタンのクリックイベント
 $('#btn_TSP').click(function() {
   btn_TSP_isActive = !btn_TSP_isActive; // 状態を反転させる
 
@@ -126,11 +126,29 @@ $('#btn_TSP').click(function() {
             var path = response.path;
             var len = response.len;
             var position = response.position;
+            var exec_time_sec = response.exec_time_sec;  // 実行時間を取得
+            var percent = response.percent;
+
             // 経路を表示
             polyline = L.polyline(path, { color: 'red' })
             polyline.addTo(map);
+
             var len_round = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_TSP_text.textContent = 'Traveling：'+len_round+'km';
+
+            // 実行時間を小数点3位まで四捨五入
+            var exec_time_round = Math.round(exec_time_sec * 1000) / 1000;
+
+            var html = 
+              'Length：' + len_round + 'km<br>' +
+              'Exec time：' + exec_time_round + ' sec';
+
+              if(percent !== undefined && percent !== null) {
+                // 0.00001未満なら指数表記、そうでなければ小数点以下5桁
+                var percent_display = (Math.abs(percent) < 0.00001) ? percent.toExponential(5) : percent.toFixed(5);
+                html += '<br>Percent：' + percent_display + '%';
+              }
+            btn_TSP_text.innerHTML = html;
+
             $('#btn_TSP_text').removeClass('hidden');
             //移動先の点を表示
             var option = {

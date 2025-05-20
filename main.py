@@ -23,6 +23,8 @@ def load_data():
 def leafletMap():
     return render_template("index.html")
 
+import time
+
 @app.route('/TSP_path', methods=['POST'])
 def TSP_path():
     if request.method == 'POST':
@@ -34,35 +36,55 @@ def TSP_path():
         value = data['value']
 
         #データベースから道路データを取得
-        P = points
+        P = points.copy()
         if startPoint:
             P.append(startPoint)
+        else:
+            startPoint = points[0]
         if endPoint:
             P.append(endPoint)
+        else:
+            endPoint = points[-1]
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #TSPの場合
         if value == "type1":
-            if startPoint:
-                points.append(startPoint)
-            if endPoint:
-                points.append(endPoint)
-            path, len_path, _ = pathSearch.travelingPath(points, link, length, value, len_dic)
-            return jsonify({'path': path, 'len': len_path})
+            start_time = time.time()
+            path, len_path, _ = pathSearch.travelingPath(P, link, length, value, len_dic)
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         #パス型TSPの場合
         if value == "type2":
-            path, len_path = pathSearch.path_TSP(startPoint, endPoint, points, link, length, len_dic)
-            return jsonify({'path': path, 'len': len_path})
+            start_time = time.time()
+            path, len_path = pathSearch.path_TSP_zero_edge(startPoint, endPoint, points, link, length, len_dic)
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type3":
+            start_time = time.time()
             path, len_path = pathSearch.path_TSP_full_search(startPoint, endPoint, points, link, length, len_dic)
-            return jsonify({'path': path, 'len': len_path})
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type4":
+            start_time = time.time()
             path, len_path = pathSearch.path_TSP_greedy(startPoint, endPoint, points, link, length, len_dic)
-            return jsonify({'path': path, 'len': len_path})
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
+        
+        if value == "type5":
+            start_time = time.time()
+            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length, len_dic)
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
+        
+        if value == "type6":
+            start_time = time.time()
+            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length, len_dic)
+            elapsed_time = time.time() - start_time
+            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
         #ORISの場合
         if value == "ORIS":
@@ -77,11 +99,12 @@ def TSP_path():
                 query.append((str(points[i]), str(points[i + 1])))
 
             R = pathSearch.Routing(link, length)
+            start_time = time.time()
             path, len_, position = R.find_optimal_stops(query, str(pathSearch.nearestNode(startPoint, link)), str(pathSearch.nearestNode(endPoint, link)))
+            elapsed_time = time.time() - start_time
 
-            return jsonify({'path': path, 'len': len_, 'position': position})
-        
-    
+            return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time})
+
     else:
         return jsonify({'message': 'Invalid request method'})
     

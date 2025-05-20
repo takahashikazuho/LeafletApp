@@ -9,13 +9,13 @@
   <div id="map"></div>
   <div class="btn-flex">
     <div class="textForm">
-      <p><label class="formLabel">Maximum Walking Distance(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
+      <p><label class="formLabel">Walking(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
     </div>
     <div class="btn-container">
       <button id ="btn_random" class="btn route-display">Random Points</button>
     </div>
     <div class="textForm">
-      <input type="number" value="1" id="random_num" class="formBox" min="1"></label>
+      <input type="number" value="10" id="random_num" class="formBox" min="1"></label>
     </div>
     <div class="btn mamListBox">
       <a href="javascript:void(0)">
@@ -36,7 +36,8 @@
       <label><input type="radio" name="type-traveling" value="type2">zero edge TSP</label>
       <label><input type="radio" name="type-traveling" value="type3">brute force</label>
       <label><input type="radio" name="type-traveling" value="type4">greedy</label>
-      <label><input type="radio" name="type-traveling" value="type5">B&B</label>
+      <label><input type="radio" name="type-traveling" value="type5">B&B(ME)</label>
+      <label><input type="radio" name="type-traveling" value="type6">B&B(MST)</label>
       <label><input type="radio" name="type-traveling" value="ORIS">ORIS</label>
     </div>
     <div class="btn-container">

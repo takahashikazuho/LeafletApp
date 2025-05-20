@@ -364,51 +364,52 @@ def reorder_tsp_st_to_en(lst, st, en):
     else:
         raise ValueError('隣接判定ロジックエラー')
 
-def path_TSP(st, en, points, link, length, len_dic):
-    #通るポイント(都市)
-    positions = []
-    for p in points:
-        positions.append(str(nearestNode(p, link)))
+def path_TSP_zero_edge(st, en, points, link, length, len_dic):
+    # 都市ノードリストの作成（st, en, points全部）
+    positions = [str(nearestNode(p, link)) for p in points]
     st = str(nearestNode(st, link))
     en = str(nearestNode(en, link))
-
-    #巡回セールスマン問題のためのグラフ
+    
+    # st, en, pointsすべてを集合化して重複排除
+    node_list = list(set(positions + [st, en]))
+    
+    # 巡回セールスマン問題用の完全グラフを作る
     G = nx.Graph()
-    for i in range(len(positions)):
-        G.add_node(positions[i], index=i)
-    G.add_node(st, index=111)
-    G.add_node(en, index=999)
-    # G.add_nodes_from(positions)
-
-    #都市間の最短経路を求めるためのグラフ
+    for i, n in enumerate(node_list):
+        G.add_node(n, index=i)
+    
+    # 都市間最短経路探索用グラフ
     G_temp = linkToGraph(link, length)
     connectGraph(G_temp)
-
-    #都市間の最短経路を求めて，Gのエッジとする
-    for u in positions:
-        for v in positions:
-            if positions.index(u) < positions.index(v):
-                if (u == st and v == en) or (u == en and v == st):
-                    continue
-                G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
-
-    #st,en間に0エッジを追加
-    G.add_edge(st, en, weight=0.001)
     
-    #巡回セールスマン問題を解く
+    # 全点間完全グラフを構築する
+    for i in range(len(node_list)):
+        for j in range(i+1, len(node_list)):
+            u, v = node_list[i], node_list[j]
+            if (u == st and v == en) or (u == en and v == st):
+                continue  # st-en間だけはあとで追加（ダミーエッジ）
+            G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+    G.add_edge(st, en, weight=0.00001)  # st-en間ダミーエッジ
+
+    # 完全グラフになっているか確認
+    assert nx.is_connected(G), "G is not connected!"
+
+    # 巡回セールスマン問題を近似解で解く（ダミーエッジを活かす）
     tsp = list(nx.algorithms.approximation.simulated_annealing_tsp(G, init_cycle="greedy"))
-    tsp.pop()
+    tsp.pop()  # 巡回路から最終ノード=始点の余分を消す
+
+    # スタート・ゴールが最初と最後になるよう並び替え
     tsp = reorder_tsp_st_to_en(tsp, st, en)
 
-    #巡回順に最短経路を求めて返却
+    # 巡回順に最短経路を求めて返す
     path = []
-    length = 0
+    total_length = 0
     for i in range(len(tsp)-1):
         path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
-        length += len_SP(G_temp, tsp[i], tsp[i+1], len_dic)
+        total_length += len_SP(G_temp, tsp[i], tsp[i+1], len_dic)
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
-    return path, length
+    return path, total_length
 
 def path_TSP_full_search(st, en, points, link, length, len_dic):
     # 通るポイント（都市）のノード名リスト作成
@@ -529,6 +530,264 @@ def path_TSP_greedy(st, en, points, link, length, len_dic):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length_sum
+
+def path_TSP_branch_and_bound_with_queue(st, en, points, link, length, len_dic):
+    # 都市ノードリスト
+    positions = [str(nearestNode(p, link)) for p in points]
+    st = str(nearestNode(st, link))
+    en = str(nearestNode(en, link))
+
+    # 都市セット（重複排除・順序問わず）
+    all_cities = list(set(positions + [st, en]))
+    N = len(all_cities)
+
+    # 1. 経路グラフ準備
+    #    G_temp上で都市間距離をlen_SPで求める (最短路長)
+    G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
+
+    # 2. 距離テーブル構築
+    #    city_dist[u][v] = len_SP(u,v)
+    city_dist = {}
+    for u in all_cities:
+        city_dist[u] = {}
+        for v in all_cities:
+            if u == v:
+                city_dist[u][v] = 0
+            else:
+                city_dist[u][v] = len_SP(G_temp, u, v, len_dic)
+
+    N = len(all_cities)
+    n_middle = N - 2  # st, enを除いた都市数
+
+    # 訪問ノード数カウンタ
+    node_count = 0
+
+    # 全探索パス数（始点と終点以外全部積み換えた場合）
+    if n_middle <= 0:
+        full_search_steps = 1
+    else:
+        full_search_steps = math.factorial(n_middle)
+
+    # 3. 分枝限定(優先度キュー付き)
+    best = {'cost': float('inf'), 'path': None}
+    # --- 貪欲法による初期解探索 ---
+    curr = st
+    visited_greedy = {st}
+    greedy_path = [st]
+    greedy_cost = 0
+
+    while len(visited_greedy) < N - 1:  # en以外全部
+        candidates = set(all_cities) - visited_greedy - {en}
+        if not candidates:
+            break  # 全て訪問済み
+        # 最も近い未訪問都市を選ぶ
+        next_city = min(candidates, key=lambda v: city_dist[curr][v])
+        greedy_path.append(next_city)
+        greedy_cost += city_dist[curr][next_city]
+        visited_greedy.add(next_city)
+        curr = next_city
+
+    # 最後に終点enへ
+    greedy_path.append(en)
+    greedy_cost += city_dist[curr][en]
+
+    # 初期解としてセット
+    best = {'cost': greedy_cost, 'path': greedy_path}
+
+    def lower_bound(u, visited, curr_cost):
+        # 下界見積もり:
+        # 1) 現コスト
+        # 2) 今いるノード→未訪問都市の最小コスト（なければ0）
+        # 3) 各未訪問都市→未訪問・enへの最小
+        unvisited = set(all_cities) - visited - {en}
+        lb = curr_cost
+        # 2)
+        if unvisited:
+            lb += min(city_dist[u][v] for v in unvisited)
+        # 3)
+        for v in unvisited:
+            min_edge = min([city_dist[v][w] for w in (unvisited | {en}) if w != v])
+            lb += min_edge
+        return lb
+
+    # キュー：(推定トータル, 現コスト, 現ノード, path, visited_set)
+    #          ※推定トータル = curr_cost + 下界見積もり
+    heap = []
+    heapq.heappush(heap, (0, 0, st, [st], {st}))
+    while heap:
+        est_total, curr_cost, u, path, visited = heapq.heappop(heap)
+        node_count += 1  # ←ここでカウント
+        # すべて通っていればenに移動して終了判定
+        if len(visited) == N - 1 and en not in visited:
+            total = curr_cost + city_dist[u][en]
+            if total < best['cost']:
+                best['cost'] = total
+                best['path'] = path + [en]
+            continue
+        # 下界限定（暫定より劣化なら以降無視）
+        lb = lower_bound(u, visited, curr_cost)
+        if lb >= best['cost']:
+            continue
+        # 分枝（未訪問&en以外）
+        for v in (set(all_cities) - visited - {en}):
+            new_cost = curr_cost + city_dist[u][v]
+            new_path = path + [v]
+            new_visited = visited | {v}
+            est = lower_bound(v, new_visited, new_cost)
+            heapq.heappush(heap, (est, new_cost, v, new_path, new_visited))
+
+    # 結果パスから最短経路復元（経路上の始点/終点でDijkstra、全点実座標列に直す）
+    ret_path = []
+    path_len = 0
+    if best['path']:
+        for i in range(len(best['path'])-1):
+            sp = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
+            path_len += len_SP(G_temp, best['path'][i], best['path'][i+1], len_dic)
+            for line in sp:
+                ret_path.append([float(x) for x in line.strip('[]').split(',')])
+
+    percent = (node_count / full_search_steps) * 100
+    # print(f"探索ノード数: {node_count} / 全探索: {full_search_steps} ({percent:.2f} %)")
+    return ret_path, path_len, percent
+
+def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length, len_dic):
+    # 都市ノードリスト
+    positions = [str(nearestNode(p, link)) for p in points]
+    st = str(nearestNode(st, link))
+    en = str(nearestNode(en, link))
+
+    # 都市セット（重複排除・順序問わず）
+    all_cities = list(set(positions + [st, en]))
+    N = len(all_cities)
+
+    # 1. 経路グラフ準備
+    #    G_temp上で都市間距離をlen_SPで求める (最短路長)
+    G_temp = linkToGraph(link, length)
+    connectGraph(G_temp)
+
+    # 2. 距離テーブル構築
+    #    city_dist[u][v] = len_SP(u,v)
+    city_dist = {}
+    for u in all_cities:
+        city_dist[u] = {}
+        for v in all_cities:
+            if u == v:
+                city_dist[u][v] = 0
+            else:
+                city_dist[u][v] = len_SP(G_temp, u, v, len_dic)
+
+    N = len(all_cities)
+    n_middle = N - 2  # st, enを除いた都市数
+
+    # 訪問ノード数カウンタ
+    node_count = 0
+
+    # 全探索パス数（始点と終点以外全部積み換えた場合）
+    if n_middle <= 0:
+        full_search_steps = 1
+    else:
+        full_search_steps = math.factorial(n_middle)
+
+    # 3. 分枝限定(優先度キュー付き)
+    best = {'cost': float('inf'), 'path': None}
+    # --- 貪欲法による初期解探索 ---
+    curr = st
+    visited_greedy = {st}
+    greedy_path = [st]
+    greedy_cost = 0
+
+    while len(visited_greedy) < N - 1:  # en以外全部
+        candidates = set(all_cities) - visited_greedy - {en}
+        if not candidates:
+            break  # 全て訪問済み
+        # 最も近い未訪問都市を選ぶ
+        next_city = min(candidates, key=lambda v: city_dist[curr][v])
+        greedy_path.append(next_city)
+        greedy_cost += city_dist[curr][next_city]
+        visited_greedy.add(next_city)
+        curr = next_city
+
+    # 最後に終点enへ
+    greedy_path.append(en)
+    greedy_cost += city_dist[curr][en]
+
+    # 初期解としてセット
+    best = {'cost': greedy_cost, 'path': greedy_path}
+
+    def lower_bound(u, visited, curr_cost):
+        """
+        u: 現在地
+        visited: 訪問済セット
+        curr_cost: ここまでの累積コスト
+        return: この部分経路から最短でも必要となるMST下界コスト
+        """
+        unvisited = set(all_cities) - visited - {en}
+        lb = curr_cost
+
+        if not unvisited:
+            return lb
+
+        # (1) unvisitedノード群のみのMSTコスト
+        if len(unvisited) >= 2:
+            # mst用networkxグラフを都度構築
+            H = nx.Graph()
+            for a in unvisited:
+                for b in unvisited:
+                    if a != b:
+                        H.add_edge(a, b, weight=city_dist[a][b])
+            mst_edges = nx.minimum_spanning_edges(H, data=True)
+            mst_cost = sum(e[2]['weight'] for e in mst_edges)
+            lb += mst_cost
+
+        # (2) 今いるノード→unvisitedへの最小コスト
+        min_enter = min(city_dist[u][v] for v in unvisited)
+        lb += min_enter
+
+        # (3) unvisited→終点への最小
+        min_exit = min(city_dist[v][en] for v in unvisited)
+        lb += min_exit
+
+        return lb
+
+    # キュー：(推定トータル, 現コスト, 現ノード, path, visited_set)
+    #          ※推定トータル = curr_cost + 下界見積もり
+    heap = []
+    heapq.heappush(heap, (0, 0, st, [st], {st}))
+    while heap:
+        est_total, curr_cost, u, path, visited = heapq.heappop(heap)
+        node_count += 1  # ←ここでカウント
+        # すべて通っていればenに移動して終了判定
+        if len(visited) == N - 1 and en not in visited:
+            total = curr_cost + city_dist[u][en]
+            if total < best['cost']:
+                best['cost'] = total
+                best['path'] = path + [en]
+            continue
+        # 下界限定（暫定より劣化なら以降無視）
+        lb = lower_bound(u, visited, curr_cost)
+        if lb >= best['cost']:
+            continue
+        # 分枝（未訪問&en以外）
+        for v in (set(all_cities) - visited - {en}):
+            new_cost = curr_cost + city_dist[u][v]
+            new_path = path + [v]
+            new_visited = visited | {v}
+            est = lower_bound(v, new_visited, new_cost)
+            heapq.heappush(heap, (est, new_cost, v, new_path, new_visited))
+
+    # 結果パスから最短経路復元（経路上の始点/終点でDijkstra、全点実座標列に直す）
+    ret_path = []
+    path_len = 0
+    if best['path']:
+        for i in range(len(best['path'])-1):
+            sp = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
+            path_len += len_SP(G_temp, best['path'][i], best['path'][i+1], len_dic)
+            for line in sp:
+                ret_path.append([float(x) for x in line.strip('[]').split(',')])
+    
+    percent = (node_count / full_search_steps) * 100
+    return ret_path, path_len, percent
 
 #########################################################################################
 class Routing:
