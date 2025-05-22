@@ -9,16 +9,6 @@ import networkx as nx
 
 app = Flask(__name__)
 
-len_dic = {}
-def load_data():
-    global len_dic
-    points = [[35.18441016255083, 136.9190883636475], [35.15573127979675, 136.97341918945315]]
-    y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-    link, length = db.getRectangleRoadData(y1, x1, y2, x2)
-    G = pathSearch.linkToGraph(link, length)
-    len_dic = dict(nx.all_pairs_dijkstra_path_length(G))
-    print("---data loaded---")
-
 @app.route("/")
 def leafletMap():
     return render_template("index.html")
@@ -47,42 +37,43 @@ def TSP_path():
             endPoint = points[-1]
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+        # print(points)
 
         #TSPの場合
         if value == "type1":
             start_time = time.time()
-            path, len_path, _ = pathSearch.travelingPath(P, link, length, value, len_dic)
+            path, len_path, _ = pathSearch.travelingPath(P, link, length, value)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         #パス型TSPの場合
         if value == "type2":
             start_time = time.time()
-            path, len_path = pathSearch.path_TSP_zero_edge(startPoint, endPoint, points, link, length, len_dic)
+            path, len_path = pathSearch.path_TSP_zero_edge(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type3":
             start_time = time.time()
-            path, len_path = pathSearch.path_TSP_full_search(startPoint, endPoint, points, link, length, len_dic)
+            path, len_path = pathSearch.path_TSP_full_search(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type4":
             start_time = time.time()
-            path, len_path = pathSearch.path_TSP_greedy(startPoint, endPoint, points, link, length, len_dic)
+            path, len_path = pathSearch.path_TSP_greedy(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type5":
             start_time = time.time()
-            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length, len_dic)
+            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
         if value == "type6":
             start_time = time.time()
-            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length, len_dic)
+            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
@@ -126,11 +117,11 @@ def SRP_path():
 
         #データベースから道路データを取得
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.25)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
         start = time.perf_counter()
-        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value, len_dic)
+        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value)
         end = time.perf_counter()
         print(end - start)
 
@@ -140,8 +131,5 @@ def SRP_path():
         return jsonify({'message': 'Invalid request method'})
 
 if __name__ == "__main__":
-    data_loading_thread = threading.Thread(target=load_data)
-    data_loading_thread.start()
     app.run(host="133.68.17.14",port=80,threaded=True)
-    data_loading_thread.join()
 

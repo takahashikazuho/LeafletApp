@@ -2,6 +2,7 @@
 経路探索などを行う
 """
 import math
+import sqlite3
 import networkx as nx
 import pyproj
 import db
@@ -9,6 +10,92 @@ import heapq
 import itertools
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
+
+class ShortestPathFinder:
+    def __init__(self, G, db_path="paths.db", weight="weight"):  # ← デフォルト：'weight'
+        self.G = G
+        self.len_dic = {}
+        self.weight = weight
+        # 隣接リスト化（ダイクストラ用。ノード→[(隣接ノード,重み), ...]）
+        self.adj = self._nx_to_adjlist(G, weight=weight)
+        # SQLiteコネクション
+        self.conn = sqlite3.connect(db_path)
+        self._init_db()
+
+    def _nx_to_adjlist(self, G, weight="weight"):
+        adj = {}
+        for u in G.nodes:
+            adj[u] = []
+            for v in G[u]:
+                if weight in G[u][v]:
+                    adj[u].append((v, G[u][v][weight]))
+                else:
+                    # printデバッグ推奨
+                    print(f"エッジ{u}-{v}に属性「{weight}」が無い！値={G[u][v]}")
+                    raise ValueError(f"エッジ{u}-{v}に属性「{weight}」がありません")
+        return adj
+
+    def _init_db(self):
+        cur = self.conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS paths (
+                coord1 TEXT,
+                coord2 TEXT,
+                length REAL,
+                PRIMARY KEY (coord1, coord2)
+            )
+        ''')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_coord1 ON paths(coord1)')
+        cur.execute('CREATE INDEX IF NOT EXISTS idx_pair ON paths(coord1, coord2)')
+        self.conn.commit()
+
+    def _dijkstra(self, start, goal):
+        heap = [(0, start)]
+        seen = set()
+        while heap:
+            cost, u = heapq.heappop(heap)
+            if u == goal:
+                return cost
+            if u in seen:
+                continue
+            seen.add(u)
+            for v, w in self.adj.get(u, []):
+                if v not in seen:
+                    heapq.heappush(heap, (cost + w, v))
+        return float('inf')
+
+    def len_SP(self, node1, node2):
+        # キャッシュ
+        try:
+            return self.len_dic[node1][node2]
+        except KeyError:
+            pass
+
+        # DBキャッシュ
+        cur = self.conn.cursor()
+        cur.execute("SELECT length FROM paths WHERE coord1=? AND coord2=?",
+                    (str(node1), str(node2)))
+        hit = cur.fetchone()
+        if hit is not None:
+            if node1 not in self.len_dic:
+                self.len_dic[node1] = {}
+            self.len_dic[node1][node2] = hit[0]
+            return hit[0]
+
+        # 自作ダイクストラ
+        dist = self._dijkstra(node1, node2)
+        # キャッシュ・DB追加
+        if node1 not in self.len_dic:
+            self.len_dic[node1] = {}
+        self.len_dic[node1][node2] = dist
+        cur.execute("INSERT OR IGNORE INTO paths (coord1, coord2, length) VALUES (?, ?, ?)",
+                    (str(node1), str(node2), dist))
+        self.conn.commit()
+
+        return dist
+
+    def close(self):
+        self.conn.close()
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
@@ -66,16 +153,9 @@ def linkToGraph(link, length):
     G = nx.Graph()
     G.add_weighted_edges_from(edges)
     return G
-
-#最短経路長が辞書になかったらダイクストラで計算
-def len_SP(G, node1, node2, len_dic):
-    try:
-        return len_dic[node1][node2]
-    except KeyError:
-        return nx.dijkstra_path_length(G, node1, node2)
     
 #巡回経路
-def travelingPath(points, link, length, value, len_dic):
+def travelingPath(points, link, length, value):
     #通るポイント(都市)
     positions = []
     for p in points:
@@ -90,10 +170,11 @@ def travelingPath(points, link, length, value, len_dic):
     connectGraph(G_temp)
 
     #都市間の最短経路を求めて，Gのエッジとする
+    sp = ShortestPathFinder(G_temp)
     for u in positions:
         for v in positions:
             if positions.index(u) < positions.index(v):
-                G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+                G.add_edge(u, v, weight=sp.len_SP(u, v))
     
     #巡回セールスマン問題を解く
     if value == "type1":
@@ -109,7 +190,7 @@ def travelingPath(points, link, length, value, len_dic):
     length = 0
     for i in range(len(tsp)-1):
         path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
-        length += len_SP(G_temp, tsp[i], tsp[i+1], len_dic)
+        length += sp.len_SP(tsp[i], tsp[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
@@ -151,188 +232,188 @@ def travelingPath(points, link, length, value, len_dic):
 
 #     return positions_SRP
 
-#経由点決定(乗客移動距離考慮)
-def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.01):
-    #経由点集合
-    positions_SRP = []
-    #各候補点間の最短経路長を格納
-    path_length = {}
-    path_length[tsp[0]] = 0
-    path_backtrack = {}
+# #経由点決定(乗客移動距離考慮)
+# def viterbi_ver2(tsp, candidates, len_dic, G, alpha=0.01):
+#     #経由点集合
+#     positions_SRP = []
+#     #各候補点間の最短経路長を格納
+#     path_length = {}
+#     path_length[tsp[0]] = 0
+#     path_backtrack = {}
 
-    #各候補点間の最短経路長を求める
-    candidates[0] = [tsp[0]]
-    for i in range(len(candidates)):
-        n = i + 1
-        r = 0
-        if i == len(candidates)-1:
-            n = 0
-        for node in candidates[n]: 
-            dist_min = float('inf')
-            node_min = ""
-            for node_prev in candidates[i]:
-                a = len_SP(G, node, node_prev, len_dic)
-                b = path_length[node_prev]
-                c = len_SP(G, node, tsp[n], len_dic) * alpha
-                dist = c + b + a
-                if dist < dist_min:
-                    dist_min = dist
-                    node_min = node_prev
-            path_length[node] = dist_min
-            if node in path_backtrack:
-                path_backtrack[node][n] = node_min
-            else:
-                path_backtrack[node] = {n:node_min}
+#     #各候補点間の最短経路長を求める
+#     candidates[0] = [tsp[0]]
+#     for i in range(len(candidates)):
+#         n = i + 1
+#         r = 0
+#         if i == len(candidates)-1:
+#             n = 0
+#         for node in candidates[n]: 
+#             dist_min = float('inf')
+#             node_min = ""
+#             for node_prev in candidates[i]:
+#                 a = len_SP(G, node, node_prev, len_dic)
+#                 b = path_length[node_prev]
+#                 c = len_SP(G, node, tsp[n], len_dic) * alpha
+#                 dist = c + b + a
+#                 if dist < dist_min:
+#                     dist_min = dist
+#                     node_min = node_prev
+#             path_length[node] = dist_min
+#             if node in path_backtrack:
+#                 path_backtrack[node][n] = node_min
+#             else:
+#                 path_backtrack[node] = {n:node_min}
             
-    #各候補点間の最短経路を遡ることにより最短経路を得る
-    node = path_backtrack[tsp[0]][0]
-    for i in reversed(range(len(candidates))):
-        positions_SRP.insert(0, node)
-        node = path_backtrack[node][i]
+#     #各候補点間の最短経路を遡ることにより最短経路を得る
+#     node = path_backtrack[tsp[0]][0]
+#     for i in reversed(range(len(candidates))):
+#         positions_SRP.insert(0, node)
+#         node = path_backtrack[node][i]
 
-    #移動先の点と移動前の点を対応
-    points_move_dic = {}
-    for i in range(len(tsp)):
-        if positions_SRP[i] in points_move_dic:
-            points_move_dic[positions_SRP[i]].append(tsp[i])
-        else:
-            points_move_dic[positions_SRP[i]] = [tsp[i]]
-    # print(positions_SRP)
-    return positions_SRP, points_move_dic
+#     #移動先の点と移動前の点を対応
+#     points_move_dic = {}
+#     for i in range(len(tsp)):
+#         if positions_SRP[i] in points_move_dic:
+#             points_move_dic[positions_SRP[i]].append(tsp[i])
+#         else:
+#             points_move_dic[positions_SRP[i]] = [tsp[i]]
+#     # print(positions_SRP)
+#     return positions_SRP, points_move_dic
 
-#巡回経路(2-opt)
-def two_opt(path, len_dic, G):
-    size = len(path)
-    while True:
-        count = 0
-        for i in range(size - 2):
-            i1 = i + 1
-            for j in range(i + 2, size):
-                if j == size - 1:
-                    j1 = 0
-                else:
-                    j1 = j + 1
-                if i != 0 or j1 != 0:
-                    l1 = len_SP(G, path[i], path[i1], len_dic)
-                    l2 = len_SP(G, path[j], path[j1], len_dic)
-                    l3 = len_SP(G, path[i], path[j], len_dic)
-                    l4 = len_SP(G, path[i1], path[j1], len_dic)
-                    if l1 + l2 > l3 + l4:
-                        # つなぎかえる
-                        new_path = path[i1:j+1]
-                        path[i1:j+1] = new_path[::-1]
-                        count += 1
-        if count == 0: break
-    return path
+# #巡回経路(2-opt)
+# def two_opt(path, len_dic, G):
+#     size = len(path)
+#     while True:
+#         count = 0
+#         for i in range(size - 2):
+#             i1 = i + 1
+#             for j in range(i + 2, size):
+#                 if j == size - 1:
+#                     j1 = 0
+#                 else:
+#                     j1 = j + 1
+#                 if i != 0 or j1 != 0:
+#                     l1 = len_SP(G, path[i], path[i1], len_dic)
+#                     l2 = len_SP(G, path[j], path[j1], len_dic)
+#                     l3 = len_SP(G, path[i], path[j], len_dic)
+#                     l4 = len_SP(G, path[i1], path[j1], len_dic)
+#                     if l1 + l2 > l3 + l4:
+#                         # つなぎかえる
+#                         new_path = path[i1:j+1]
+#                         path[i1:j+1] = new_path[::-1]
+#                         count += 1
+#         if count == 0: break
+#     return path
 
-#巡回経路(焼きなまし)
-def annealing(path, len_dic, G):
-    G_temp = nx.Graph()
-    G_temp.add_nodes_from(path)
-    for u in path:
-        for v in path:
-            if path.index(u) < path.index(v):
-                G_temp.add_edge(u, v, weight=len_SP(G, u, v, len_dic))
-    path.append(path[0])
-    positions_SRP = nx.algorithms.approximation.simulated_annealing_tsp(G_temp, path)
-    positions_SRP.pop()
-    return positions_SRP
+# #巡回経路(焼きなまし)
+# def annealing(path, len_dic, G):
+#     G_temp = nx.Graph()
+#     G_temp.add_nodes_from(path)
+#     for u in path:
+#         for v in path:
+#             if path.index(u) < path.index(v):
+#                 G_temp.add_edge(u, v, weight=len_SP(G, u, v, len_dic))
+#     path.append(path[0])
+#     positions_SRP = nx.algorithms.approximation.simulated_annealing_tsp(G_temp, path)
+#     positions_SRP.pop()
+#     return positions_SRP
 
-#相乗り経路
-def sharedRidePath(points, link, length, moveDist, value, len_dic):
-    #通るポイント(都市)
-    point_dic = {}
-    positions = []
-    for p in points:
-        node = str(nearestNode(p, link))
-        positions.append(node)
-        point_dic[node] = p
+# #相乗り経路
+# def sharedRidePath(points, link, length, moveDist, value, len_dic):
+#     #通るポイント(都市)
+#     point_dic = {}
+#     positions = []
+#     for p in points:
+#         node = str(nearestNode(p, link))
+#         positions.append(node)
+#         point_dic[node] = p
 
-    #巡回セールスマン問題のためのグラフ
-    G_temp = nx.Graph()
-    G_temp.add_nodes_from(positions)
+#     #巡回セールスマン問題のためのグラフ
+#     G_temp = nx.Graph()
+#     G_temp.add_nodes_from(positions)
 
-    #都市間の最短経路を求めるためのグラフ
-    G = linkToGraph(link, length)
-    connectGraph(G)
+#     #都市間の最短経路を求めるためのグラフ
+#     G = linkToGraph(link, length)
+#     connectGraph(G)
 
-    #都市間の最短経路を求めて，G_tempのエッジとする
-    for u in positions:
-        for v in positions:
-            if positions.index(u) < positions.index(v):
-                G_temp.add_edge(u, v, weight=len_SP(G, u, v, len_dic))
+#     #都市間の最短経路を求めて，G_tempのエッジとする
+#     for u in positions:
+#         for v in positions:
+#             if positions.index(u) < positions.index(v):
+#                 G_temp.add_edge(u, v, weight=len_SP(G, u, v, len_dic))
     
-    #巡回セールスマン問題を解く
-    tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G_temp))
+#     #巡回セールスマン問題を解く
+#     tsp = list(nx.algorithms.approximation.traveling_salesman_problem(G_temp))
 
-    #乗客の移動候補ノードを取得
-    tsp.pop()
-    candidates = []
-    for p in tsp:
-        point = p.strip("[]").split(",")
-        y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
-        link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
-        G_temp = linkToGraph(link_temp, length_temp)
-        connectGraph(G_temp)
-        candidate = [p]
-        for node in list(G_temp.nodes):
-            if node in G.nodes:
-                if len_SP(G_temp, p, node, len_dic) <= moveDist/1000:
-                    candidate.append(node)
-        candidates.append(candidate)
+#     #乗客の移動候補ノードを取得
+#     tsp.pop()
+#     candidates = []
+#     for p in tsp:
+#         point = p.strip("[]").split(",")
+#         y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
+#         link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
+#         G_temp = linkToGraph(link_temp, length_temp)
+#         connectGraph(G_temp)
+#         candidate = [p]
+#         for node in list(G_temp.nodes):
+#             if node in G.nodes:
+#                 if len_SP(G_temp, p, node, len_dic) <= moveDist/1000:
+#                     candidate.append(node)
+#         candidates.append(candidate)
 
-    #順に候補点から経由点を決定
-    if value == "type1":
-        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
-    if value == "type2":
-        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
-        positions_SRP = two_opt(positions_SRP, len_dic, G)
-    if value == "type3":
-        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
-        positions_SRP = annealing(positions_SRP, len_dic, G)
-    if value == "type4":
-        positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G, 0)
+#     #順に候補点から経由点を決定
+#     if value == "type1":
+#         positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
+#     if value == "type2":
+#         positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
+#         positions_SRP = two_opt(positions_SRP, len_dic, G)
+#     if value == "type3":
+#         positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G)
+#         positions_SRP = annealing(positions_SRP, len_dic, G)
+#     if value == "type4":
+#         positions_SRP, points_move_dic = viterbi_ver2(tsp, candidates, len_dic, G, 0)
 
     
-    #巡回順に最短経路を求めて返却
-    positions_SRP.append(positions_SRP[0])
-    path = []
-    length_SRP = 0
-    for i in range(len(positions_SRP)-1):
-        path_str = nx.dijkstra_path(G, positions_SRP[i], positions_SRP[i+1])
-        length_SRP += len_SP(G, positions_SRP[i], positions_SRP[i+1], len_dic)
-        for line in path_str:
-            path.append([float(x) for x in line.strip('[]').split(',')])
-    positions_SRP.pop()
+#     #巡回順に最短経路を求めて返却
+#     positions_SRP.append(positions_SRP[0])
+#     path = []
+#     length_SRP = 0
+#     for i in range(len(positions_SRP)-1):
+#         path_str = nx.dijkstra_path(G, positions_SRP[i], positions_SRP[i+1])
+#         length_SRP += len_SP(G, positions_SRP[i], positions_SRP[i+1], len_dic)
+#         for line in path_str:
+#             path.append([float(x) for x in line.strip('[]').split(',')])
+#     positions_SRP.pop()
 
-    #巡回順のクリックされた点の座標
-    points_SRP = []
-    for i in range(len(positions_SRP)):
-        p = points_move_dic[positions_SRP[i]]
-        points_SRP.append(point_dic[p[0]])
-        if len(p) > 1:
-            points_move_dic[positions_SRP[i]].pop(0)
+#     #巡回順のクリックされた点の座標
+#     points_SRP = []
+#     for i in range(len(positions_SRP)):
+#         p = points_move_dic[positions_SRP[i]]
+#         points_SRP.append(point_dic[p[0]])
+#         if len(p) > 1:
+#             points_move_dic[positions_SRP[i]].pop(0)
 
-    #各移動先までの経路
-    path_positions = []
-    positions_SRP_a = []
-    len_walk = 0
-    for i in range(len(positions_SRP)):
-        positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
-        point = str(nearestNode(points_SRP[i], link))
-        if point != positions_SRP[i]:
-            path_str = nx.dijkstra_path(G, point, positions_SRP[i])
-            len_walk += len_SP(G, point, positions_SRP[i], len_dic)
-            path_temp = []
-            for line in path_str:
-                path_temp.append([float(x) for x in line.strip('[]').split(',')])
-            path_positions.append(path_temp)
+#     #各移動先までの経路
+#     path_positions = []
+#     positions_SRP_a = []
+#     len_walk = 0
+#     for i in range(len(positions_SRP)):
+#         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
+#         point = str(nearestNode(points_SRP[i], link))
+#         if point != positions_SRP[i]:
+#             path_str = nx.dijkstra_path(G, point, positions_SRP[i])
+#             len_walk += len_SP(G, point, positions_SRP[i], len_dic)
+#             path_temp = []
+#             for line in path_str:
+#                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
+#             path_positions.append(path_temp)
 
-    # print(len(tsp))
-    # print(len(candidates))
-    # print(len(positions_SRP))
+#     # print(len(tsp))
+#     # print(len(candidates))
+#     # print(len(positions_SRP))
 
-    return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
+#     return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
 
 def reorder_tsp_st_to_en(lst, st, en):
     n = len(lst)
@@ -364,7 +445,7 @@ def reorder_tsp_st_to_en(lst, st, en):
     else:
         raise ValueError('隣接判定ロジックエラー')
 
-def path_TSP_zero_edge(st, en, points, link, length, len_dic):
+def path_TSP_zero_edge(st, en, points, link, length):
     # 都市ノードリストの作成（st, en, points全部）
     positions = [str(nearestNode(p, link)) for p in points]
     st = str(nearestNode(st, link))
@@ -383,12 +464,13 @@ def path_TSP_zero_edge(st, en, points, link, length, len_dic):
     connectGraph(G_temp)
     
     # 全点間完全グラフを構築する
+    sp = ShortestPathFinder(G_temp)
     for i in range(len(node_list)):
         for j in range(i+1, len(node_list)):
             u, v = node_list[i], node_list[j]
             if (u == st and v == en) or (u == en and v == st):
                 continue  # st-en間だけはあとで追加（ダミーエッジ）
-            G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+            G.add_edge(u, v, weight=sp.len_SP(u, v))
     G.add_edge(st, en, weight=0.00001)  # st-en間ダミーエッジ
 
     # 完全グラフになっているか確認
@@ -406,12 +488,12 @@ def path_TSP_zero_edge(st, en, points, link, length, len_dic):
     total_length = 0
     for i in range(len(tsp)-1):
         path_str = nx.dijkstra_path(G_temp, tsp[i], tsp[i+1])
-        total_length += len_SP(G_temp, tsp[i], tsp[i+1], len_dic)
+        total_length += sp.len_SP(tsp[i], tsp[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, total_length
 
-def path_TSP_full_search(st, en, points, link, length, len_dic):
+def path_TSP_full_search(st, en, points, link, length):
     # 通るポイント（都市）のノード名リスト作成
     positions = []
     for p in points:
@@ -430,14 +512,14 @@ def path_TSP_full_search(st, en, points, link, length, len_dic):
     # 都市間距離グラフの準備
     G_temp = linkToGraph(link, length)
     connectGraph(G_temp)
+    sp = ShortestPathFinder(G_temp)
 
     # 都市間の最短経路によるグラフ構築
     all_points = positions + [st, en]
     for u, v in itertools.combinations(all_points, 2):
         if (u == st and v == en) or (u == en and v == st):
             continue
-        # len_SP: ノードuからvまでの最短パス長
-        G.add_edge(u, v, weight=len_SP(G_temp, u, v, len_dic))
+        G.add_edge(u, v, weight=sp.len_SP(u, v))
 
     # 集合
     keypoints = positions  # ハミルトン路で必須経由するべきノード
@@ -470,13 +552,13 @@ def path_TSP_full_search(st, en, points, link, length, len_dic):
     if best_order is not None:
         for i in range(len(best_order)-1):
             path_str = nx.dijkstra_path(G_temp, best_order[i], best_order[i+1])
-            length_sum += len_SP(G_temp, best_order[i], best_order[i+1], len_dic)
+            length_sum += sp.len_SP(best_order[i], best_order[i+1])
             for line in path_str:
                 all_path.append([float(x) for x in line.strip('[]').split(',')])
 
     return all_path, length_sum
 
-def path_TSP_greedy(st, en, points, link, length, len_dic):
+def path_TSP_greedy(st, en, points, link, length):
     # 通るポイント（都市）のノード名リスト作成
     positions = []
     for p in points:
@@ -495,6 +577,7 @@ def path_TSP_greedy(st, en, points, link, length, len_dic):
     # 都市間距離グラフ
     G_temp = linkToGraph(link, length)
     connectGraph(G_temp)
+    sp = ShortestPathFinder(G_temp)
 
     # ハミルトン路・近似解
     current = st
@@ -511,7 +594,7 @@ def path_TSP_greedy(st, en, points, link, length, len_dic):
             if not candidates:  # enしか残ってない場合例外処理
                 break
             # 距離計算（len_SPでコストを取得）
-            distances = [len_SP(G_temp, current, city, len_dic) for city in candidates]
+            distances = [sp.len_SP(current, city) for city in candidates]
             nxt = candidates[distances.index(min(distances))]
         order.append(nxt)
         visited.add(nxt)
@@ -526,12 +609,12 @@ def path_TSP_greedy(st, en, points, link, length, len_dic):
     length_sum = 0
     for i in range(len(order)-1):
         path_str = nx.dijkstra_path(G_temp, order[i], order[i+1])
-        length_sum += len_SP(G_temp, order[i], order[i+1], len_dic)
+        length_sum += sp.len_SP(order[i], order[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length_sum
 
-def path_TSP_branch_and_bound_with_queue(st, en, points, link, length, len_dic):
+def path_TSP_branch_and_bound_with_queue(st, en, points, link, length):
     # 都市ノードリスト
     positions = [str(nearestNode(p, link)) for p in points]
     st = str(nearestNode(st, link))
@@ -545,6 +628,7 @@ def path_TSP_branch_and_bound_with_queue(st, en, points, link, length, len_dic):
     #    G_temp上で都市間距離をlen_SPで求める (最短路長)
     G_temp = linkToGraph(link, length)
     connectGraph(G_temp)
+    sp = ShortestPathFinder(G_temp)
 
     # 2. 距離テーブル構築
     #    city_dist[u][v] = len_SP(u,v)
@@ -555,7 +639,7 @@ def path_TSP_branch_and_bound_with_queue(st, en, points, link, length, len_dic):
             if u == v:
                 city_dist[u][v] = 0
             else:
-                city_dist[u][v] = len_SP(G_temp, u, v, len_dic)
+                city_dist[u][v] = sp.len_SP(u, v)
 
     N = len(all_cities)
     n_middle = N - 2  # st, enを除いた都市数
@@ -642,16 +726,16 @@ def path_TSP_branch_and_bound_with_queue(st, en, points, link, length, len_dic):
     path_len = 0
     if best['path']:
         for i in range(len(best['path'])-1):
-            sp = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
-            path_len += len_SP(G_temp, best['path'][i], best['path'][i+1], len_dic)
-            for line in sp:
+            spa = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
+            path_len += sp.len_SP(best['path'][i], best['path'][i+1])
+            for line in spa:
                 ret_path.append([float(x) for x in line.strip('[]').split(',')])
 
     percent = (node_count / full_search_steps) * 100
     # print(f"探索ノード数: {node_count} / 全探索: {full_search_steps} ({percent:.2f} %)")
     return ret_path, path_len, percent
 
-def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length, len_dic):
+def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length):
     # 都市ノードリスト
     positions = [str(nearestNode(p, link)) for p in points]
     st = str(nearestNode(st, link))
@@ -665,6 +749,7 @@ def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length, len_d
     #    G_temp上で都市間距離をlen_SPで求める (最短路長)
     G_temp = linkToGraph(link, length)
     connectGraph(G_temp)
+    sp = ShortestPathFinder(G_temp)
 
     # 2. 距離テーブル構築
     #    city_dist[u][v] = len_SP(u,v)
@@ -675,7 +760,7 @@ def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length, len_d
             if u == v:
                 city_dist[u][v] = 0
             else:
-                city_dist[u][v] = len_SP(G_temp, u, v, len_dic)
+                city_dist[u][v] = sp.len_SP(u, v)
 
     N = len(all_cities)
     n_middle = N - 2  # st, enを除いた都市数
@@ -781,9 +866,9 @@ def path_TSP_branch_and_bound_with_queue_MST(st, en, points, link, length, len_d
     path_len = 0
     if best['path']:
         for i in range(len(best['path'])-1):
-            sp = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
-            path_len += len_SP(G_temp, best['path'][i], best['path'][i+1], len_dic)
-            for line in sp:
+            spa = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
+            path_len += sp.len_SP(best['path'][i], best['path'][i+1])
+            for line in spa:
                 ret_path.append([float(x) for x in line.strip('[]').split(',')])
     
     percent = (node_count / full_search_steps) * 100
@@ -1028,11 +1113,12 @@ class Routing:
         P = self.vehicle_stops(st, en, pie, Q, SPC_cache)
 
         # 4.14 return P
+        sp = ShortestPathFinder(self.G)
         path = []
         length_path = 0
         for i in range(len(P)-1):
             path_str = nx.dijkstra_path(self.G, P[i], P[i+1])
-            length_path += len_SP(self.G, P[i], P[i+1], self.len_dic)
+            length_path += sp.len_SP(P[i], P[i+1])
             for line in path_str:
                 path.append([float(x) for x in line.strip('[]').split(',')])
         position = []
@@ -1071,6 +1157,7 @@ class Routing:
 def create_data_model(points, link, length, len_dic):
     G = linkToGraph(link, length)
     connectGraph(G)
+    sp = ShortestPathFinder(G)
     positions = []
     for p in points:
         positions.append(str(nearestNode(p, link)))
@@ -1080,7 +1167,7 @@ def create_data_model(points, link, length, len_dic):
     for p in positions:
         d = []
         for q in positions:
-            d.append(len_SP(G, p, q, len_dic))
+            d.append(sp.len_SP(p, q))
         DM.append(d)
 
     data["distance_matrix"] = DM

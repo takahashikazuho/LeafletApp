@@ -12,9 +12,8 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 L.control.scale({imperial:false}).addTo(map);
 
-// csvに書き込んであるデータの範囲
-var coordinates = [[35.18441016255083, 136.9190883636475], [35.15573127979675, 136.97341918945315]]
-L.rectangle(coordinates, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
+var coordinates = [[35.19892125913606, 136.89591407775882], [35.15163514034506, 136.99831008911136]]
+// L.rectangle(coordinates, { color: "#ff7800", weight: 5 , fill: false }).addTo(map);
 
 const redIcon = L.icon({
   iconUrl: "https://esm.sh/leaflet@1.9.2/dist/images/marker-icon.png",
