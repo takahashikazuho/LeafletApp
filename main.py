@@ -55,25 +55,25 @@ def TSP_path():
         
         if value == "type3":
             start_time = time.time()
-            path, len_path = pathSearch.path_TSP_full_search(startPoint, endPoint, points, link, length)
+            path, len_path = pathSearch.path_SHP_full_search(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type4":
             start_time = time.time()
-            path, len_path = pathSearch.path_TSP_greedy(startPoint, endPoint, points, link, length)
+            path, len_path = pathSearch.path_SHP_greedy(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
         if value == "type5":
             start_time = time.time()
-            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length)
+            path, len_path, per = pathSearch.path_SHP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
         if value == "type6":
             start_time = time.time()
-            path, len_path, per = pathSearch.path_TSP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length)
+            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
@@ -110,20 +110,22 @@ def SRP_path():
         moveDist = float(data['moveDist'])
         value = data['value']
 
+        P = points.copy()
         if startPoint:
-            points.append(startPoint)
+            P.append(startPoint)
+        else:
+            startPoint = points.pop(0)
         if endPoint:
-            points.append(endPoint)
-
-        #データベースから道路データを取得
-        y1, x1, y2, x2 = pathSearch.rectangleArea(points)
+            P.append(endPoint)
+        else:
+            endPoint = points.pop(-1)
+        y1, x1, y2, x2 = pathSearch.rectangleArea(P)
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
 
         #経路探索
-        start = time.perf_counter()
-        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.sharedRidePath(points, link, length, moveDist, value)
-        end = time.perf_counter()
-        print(end - start)
+        start = time.time()
+        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.BusRouting(startPoint, endPoint, points, link, length, moveDist)
+        end = time.time() - start
 
         return jsonify({'path': path, 'len': len, 'points_SRP': points_SRP, 'positions_SRP': positions_SRP, 'path_positions': path_positions, 'len_walk': len_walk})
     

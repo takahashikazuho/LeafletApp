@@ -176,7 +176,7 @@ $('#btn_TSP').click(function() {
 
 const btn_SRP_text = document.getElementById('btn_SRP_text');
 const moveDist = document.getElementById('moveDist');
-// 相乗り経路探索ボタンのクリックイベント
+// BR探索ボタンのクリックイベント
 $('#btn_SRP').click(function() {
   btn_SRP_isActive = !btn_SRP_isActive; // 状態を反転させる
 
@@ -226,7 +226,7 @@ $('#btn_SRP').click(function() {
               points_SRP_latlng = L.latLng(points_SRP[i][0], points_SRP[i][1]);
               for(var j=0; j<markers.length; j++) {
                 if(markers[j].getLatLng().equals(points_SRP_latlng)) {
-                  markers[j].bindPopup(String(i+1),{autoClose:false}).openPopup();
+                  markers[j].bindPopup(String(i),{autoClose:false}).openPopup();
                 }
               }
             }
