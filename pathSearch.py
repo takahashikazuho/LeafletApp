@@ -14,11 +14,17 @@ from ortools.constraint_solver import pywrapcp
 class ShortestPathFinder:
     len_dic = {}
 
-    def __init__(self, G, db_path="paths.db", weight="weight"):
+    def __init__(self, G, use_db_cache=False, db_path="paths.db", weight="weight", bulk_size=100):
         self.G = G
         self.weight = weight
-        self.conn = sqlite3.connect(db_path)
-        self._init_db()
+        self.use_db_cache = use_db_cache
+        self.bulk_size = bulk_size
+        self._bulk_buffer = []
+        if self.use_db_cache:
+            self.conn = sqlite3.connect(db_path)
+            self._init_db()
+        else:
+            self.conn = None  # 安全のため
 
     def _init_db(self):
         cur = self.conn.cursor()
@@ -30,67 +36,70 @@ class ShortestPathFinder:
                 PRIMARY KEY (coord1, coord2)
             )
         ''')
-        # indexes
+        # 必要ならインデックスも
         cur.execute('CREATE INDEX IF NOT EXISTS idx_coord1 ON paths(coord1)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_pair ON paths(coord1, coord2)')
         self.conn.commit()
 
     def _dijkstra(self, start, goal):
         try:
-            # Use Dijkstra in NetworkX
             return nx.shortest_path_length(self.G, source=start, target=goal, weight=self.weight)
         except nx.NetworkXNoPath:
-            return None  # inf ではなく None
+            return None
 
     def len_SP(self, node1, node2):
-        # まずメモリキャッシュ
+        # メモリキャッシュ
         try:
             return type(self).len_dic[node1][node2]
         except KeyError:
             pass
 
-        cur = self.conn.cursor()
-        # DBに問い合わせ
-        cur.execute(
-            "SELECT length FROM paths WHERE coord1=? AND coord2=?",
-            (str(node1), str(node2))
-        )
-        hit = cur.fetchone()
-        if hit is not None:
-            length = hit[0]
-            if node1 not in self.len_dic:
-                type(self).len_dic[node1] = {}
-            if length is not None:
-                # パスありの場合のみキャッシュ
-                type(self).len_dic[node1][node2] = length
-                return length
-            else:
-                # パス無し(NULL)→Noneを返す
-                return None
+        # DBキャッシュ
+        if self.use_db_cache:
+            cur = self.conn.cursor()
+            cur.execute(
+                "SELECT length FROM paths WHERE coord1=? AND coord2=?",
+                (str(node1), str(node2))
+            )
+            hit = cur.fetchone()
+            if hit is not None:
+                length = hit[0]
+                if node1 not in self.len_dic:
+                    type(self).len_dic[node1] = {}
+                if length is not None:
+                    type(self).len_dic[node1][node2] = length
+                    return length
+                else:
+                    return None
 
+        # 計算
         dist = self._dijkstra(node1, node2)
-        if dist is not None:
-            # パスがある場合のみキャッシュ・保存
-            if node1 not in self.len_dic:
-                type(self).len_dic[node1] = {}
-            type(self).len_dic[node1][node2] = dist
-            cur.execute(
+        if node1 not in self.len_dic:
+            type(self).len_dic[node1] = {}
+        type(self).len_dic[node1][node2] = dist
+
+        # DBにバッファして後で一気に書き込み
+        if self.use_db_cache:
+            self._bulk_buffer.append((str(node1), str(node2), dist))
+            if len(self._bulk_buffer) >= self.bulk_size:
+                self._flush_bulk()
+        return dist
+
+    def _flush_bulk(self):
+        if self.use_db_cache and self._bulk_buffer:
+            cur = self.conn.cursor()
+            cur.executemany(
                 "INSERT OR IGNORE INTO paths (coord1, coord2, length) VALUES (?, ?, ?)",
-                (str(node1), str(node2), dist)
+                self._bulk_buffer
             )
             self.conn.commit()
-            return dist
-        else:
-            # パスがない場合はDBにはNULL、python返値はNone
-            cur.execute(
-                "INSERT OR IGNORE INTO paths (coord1, coord2, length) VALUES (?, ?, ?)",
-                (str(node1), str(node2), None)
-            )
-            self.conn.commit()
-            return None  # 必要ならfloat('inf')でも可
+            self._bulk_buffer = []
 
     def close(self):
-        self.conn.close()
+        # バッファの残りを必ず保存
+        self._flush_bulk()
+        if self.conn:
+            self.conn.close()
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
