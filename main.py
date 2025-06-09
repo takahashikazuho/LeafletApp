@@ -3,7 +3,6 @@ FlaskでサーバをたててWeb上で地図を表示する
 """
 from flask import Flask, render_template, request, jsonify
 import db, pathSearch
-import threading
 import time
 import networkx as nx
 
@@ -128,6 +127,34 @@ def SRP_path():
         end = time.time() - start
 
         return jsonify({'path': path, 'len': len, 'points_SRP': points_SRP, 'positions_SRP': positions_SRP, 'path_positions': path_positions, 'len_walk': len_walk})
+    
+    else:
+        return jsonify({'message': 'Invalid request method'})
+    
+@app.route('/test', methods=['POST'])
+def test():
+    if request.method == 'POST':
+        #リクエストからデータを取得
+        data = request.get_json()  
+        points = data['points']
+        moveDist = float(data['moveDist'])
+
+        y1, x1, y2, x2 = pathSearch.rectangleArea(points)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+
+        G = pathSearch.linkToGraph(link, length)
+        pathSearch.connectGraph(G)
+        sp = pathSearch.ShortestPathFinder(G)
+
+        nodes = [sp.nearestNode(p) for p in points]
+
+        start_time = time.time()
+        p = pathSearch.set_cover(nodes, moveDist, sp)
+        elapsed_time = time.time() - start_time
+
+        lst = [ [float(x) for x in s.strip('[]').split(',')] for s in p ]
+
+        return jsonify({'position': lst, 'exec_time_sec': elapsed_time})
     
     else:
         return jsonify({'message': 'Invalid request method'})

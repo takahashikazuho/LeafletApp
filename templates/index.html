@@ -9,13 +9,13 @@
   <div id="map"></div>
   <div class="btn-flex">
     <div class="textForm">
-      <p><label class="formLabel">Walking(m)<input type="text" value="300" id="moveDist" class="formBox"></label></p>
+      <p><label class="formLabel">Walking(m)<input type="text" value="500" id="moveDist" class="formBox"></label></p>
     </div>
     <div class="btn-container">
       <button id ="btn_random" class="btn route-display">Random Points</button>
     </div>
     <div class="textForm">
-      <input type="number" value="10" id="random_num" class="formBox" min="1"></label>
+      <input type="number" value="20" id="random_num" class="formBox" min="1"></label>
     </div>
     <div class="btn mamListBox">
       <a href="javascript:void(0)">
@@ -28,17 +28,21 @@
       </select>
     </div>
     <div class="btn-container">
+      <button id ="btn_test" class="btn route-display">Test</Search></button>
+      <p id="btn_test_text" class="textBox hidden"></p>
+    </div>
+    <div class="btn-container">
       <button id ="btn_TSP" class="btn route-display">Path Search</Search></button>
       <p id="btn_TSP_text" class="textBox hidden"></p>
     </div>
     <div class="radio-type">
       <label><input type="radio" name="type-traveling" value="type1" checked>TSP</label>
-      <label><input type="radio" name="type-traveling" value="type2">zero edge TSP</label>
-      <label><input type="radio" name="type-traveling" value="type3">brute force</label>
+      <!-- <label><input type="radio" name="type-traveling" value="type2">zero edge TSP</label> -->
+      <!-- <label><input type="radio" name="type-traveling" value="type3">brute force</label> -->
       <label><input type="radio" name="type-traveling" value="type4">greedy</label>
-      <label><input type="radio" name="type-traveling" value="type5">B&B(ME)</label>
+      <!-- <label><input type="radio" name="type-traveling" value="type5">B&B(ME)</label> -->
       <label><input type="radio" name="type-traveling" value="type6">B&B(MST)</label>
-      <label><input type="radio" name="type-traveling" value="ORIS">ORIS</label>
+      <!-- <label><input type="radio" name="type-traveling" value="ORIS">ORIS</label> -->
     </div>
     <div class="btn-container">
       <button id ="btn_SRP" class="btn route-display">Bus Routing</button>

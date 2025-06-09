@@ -10,21 +10,58 @@ import heapq
 import itertools
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
+from scipy.spatial import KDTree
+from pyproj import Transformer
+import ast
+import pulp
 
 class ShortestPathFinder:
     len_dic = {}
+    kdtree = None
+    kdtree_nodes = None
+    kdtree_coords_km = None
+    transformer = None
+    zone = None
 
-    def __init__(self, G, use_db_cache=False, db_path="paths.db", weight="weight", bulk_size=100):
+    def __init__(self, G, use_db_cache=False, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
         self.G = G
         self.weight = weight
         self.use_db_cache = use_db_cache
         self.bulk_size = bulk_size
         self._bulk_buffer = []
+        self.zone = utm_zone
+
+        # UTM zone(日本ゾーン 51-56)、EPSG:3097 + (zone-51)
+        epsg_code = 3097 + (utm_zone - 51)
+        crs_utm = f"EPSG:{epsg_code}"
+
+        # transformer（zoneが変わったら再作成）
+        if (type(self).transformer is None) or (type(self).zone != utm_zone):
+            type(self).transformer = Transformer.from_crs("epsg:4326", crs_utm, always_xy=True)
+            type(self).zone = utm_zone
+
+        # KDTree初期化（グラフやzone更新時のみ再作成）
+        nodes = list(G.nodes)
+        if (type(self).kdtree is None or
+            type(self).kdtree_nodes != nodes or
+            type(self).zone != utm_zone):
+
+            coords_km = []
+            for node_str in nodes:
+                latlon = ast.literal_eval(node_str)  # [lat, lon] にパース
+                # transform(lon, lat)
+                x, y = type(self).transformer.transform(latlon[1], latlon[0])
+                coords_km.append([x/1000, y/1000])
+            type(self).kdtree = KDTree(coords_km)
+            type(self).kdtree_nodes = nodes  # = list of str
+            type(self).kdtree_coords_km = coords_km
+
+        # DBキャッシュ
         if self.use_db_cache:
             self.conn = sqlite3.connect(db_path)
             self._init_db()
         else:
-            self.conn = None  # 安全のため
+            self.conn = None
 
     def _init_db(self):
         cur = self.conn.cursor()
@@ -36,16 +73,32 @@ class ShortestPathFinder:
                 PRIMARY KEY (coord1, coord2)
             )
         ''')
-        # 必要ならインデックスも
         cur.execute('CREATE INDEX IF NOT EXISTS idx_coord1 ON paths(coord1)')
         cur.execute('CREATE INDEX IF NOT EXISTS idx_pair ON paths(coord1, coord2)')
         self.conn.commit()
 
-    def _dijkstra(self, start, goal):
-        try:
-            return nx.shortest_path_length(self.G, source=start, target=goal, weight=self.weight)
-        except nx.NetworkXNoPath:
-            return None
+    def _latlon_to_km(self, latlon):
+        # 入力: [lat, lon]リスト
+        x, y = type(self).transformer.transform(latlon[1], latlon[0])
+        return [x/1000, y/1000]
+
+    def nearestNode(self, p):
+        """
+        p: [lat, lon]リスト。KDTreeで最近傍ノード（ノードのstr型＝"[lat, lon]"）を返す。
+        """
+        coord_km = self._latlon_to_km(p)
+        dist, idx = type(self).kdtree.query(coord_km)
+        return type(self).kdtree_nodes[idx]  # 返値はstr型
+
+    def nodes_within_radius(self, p, r_km):
+        """
+        p: "[lat, lon]"形式str, r_km: 距離km
+        返値: "[lat, lon]" 形式strのリスト
+        """
+        latlon = ast.literal_eval(p)  # "[lat,lon]" → [lat, lon]リスト
+        coord_km = self._latlon_to_km(latlon)
+        idxs = type(self).kdtree.query_ball_point(coord_km, r_km)
+        return [type(self).kdtree_nodes[i] for i in idxs]
 
     def len_SP(self, node1, node2):
         # メモリキャッシュ
@@ -73,17 +126,24 @@ class ShortestPathFinder:
                     return None
 
         # 計算
+        # このときノードIDはstr型("[lat, lon]")なのでGraphにはstrで登録されているはず
         dist = self._dijkstra(node1, node2)
         if node1 not in self.len_dic:
             type(self).len_dic[node1] = {}
         type(self).len_dic[node1][node2] = dist
 
-        # DBにバッファして後で一気に書き込み
+        # DBへのバッファ
         if self.use_db_cache:
             self._bulk_buffer.append((str(node1), str(node2), dist))
             if len(self._bulk_buffer) >= self.bulk_size:
                 self._flush_bulk()
         return dist
+
+    def _dijkstra(self, start, goal):
+        try:
+            return nx.shortest_path_length(self.G, source=start, target=goal, weight=self.weight)
+        except nx.NetworkXNoPath:
+            return None
 
     def _flush_bulk(self):
         if self.use_db_cache and self._bulk_buffer:
@@ -96,7 +156,6 @@ class ShortestPathFinder:
             self._bulk_buffer = []
 
     def close(self):
-        # バッファの残りを必ず保存
         self._flush_bulk()
         if self.conn:
             self.conn.close()
@@ -118,11 +177,13 @@ def rectangleArea(points):
     return max_lat, min_lng, min_lat, max_lng
 
 #ある点の周囲の矩形領域
-#半径rの円に接する正方形の左上と右下の点
+#半径rの円を囲む正方形の左上と右下の点 r:km
 def aroundRectagleArea(y, x, r):
+    r = r * 1000
+    d = r * math.sqrt(6) / 2 #内接正方形の1.5倍の面積
     grs80 = pyproj.Geod(ellps='GRS80')
-    x1, y1, _back1 = grs80.fwd(float(y), float(x), 135, r * math.sqrt(2))
-    x2, y2, _back2 = grs80.fwd(float(y), float(x), 315, r * math.sqrt(2))
+    x1, y1, _back1 = grs80.fwd(float(y), float(x), 135, d)
+    x2, y2, _back2 = grs80.fwd(float(y), float(x), 315, d)
     return y1, x1, y2, x2
 
 #座標の最近傍ノードを取得
@@ -305,6 +366,79 @@ def two_opt(path, sp):
             break
     return path
 
+def get_surrounding_sets(nodes, moveDist, sp):
+    surrounding_sets = []
+    for n in nodes:
+        # nodes_within_radiusがリストやセットを返すと仮定
+        surround = set(sp.nodes_within_radius(n, moveDist))
+        surrounding_sets.append(surround)
+    return surrounding_sets
+
+def get_cover_subsets(surrounding_sets):
+    # surrounding_sets: [s1, s2, s3, ...] 各sはset
+
+    # 1. S = 全ノードの和集合
+    S = set().union(*surrounding_sets)
+
+    # 2. 各ノードについて「どのsに属するか」を探索
+    node_to_si = dict()  # ノード: 属するsインデックス集合
+    for idx, s in enumerate(surrounding_sets):
+        for node in s:
+            node_to_si.setdefault(node, set()).add(idx)
+
+    # 3. 部分集合郡b1, b2,...を構築（同じs列に同時に属するものごとまとめる）
+    b_dict = dict()  # key: frozenset(indices), value: set(ノード群)
+    for node, si_set in node_to_si.items():
+        key = frozenset(si_set)
+        b_dict.setdefault(key, set()).add(node)
+
+    # 結果:
+    #   - S: 被覆すべきノード全体の集合
+    #   - s1, s2,...: surrounding_sets（インデックスで管理）
+    #   - b1, b2,...: b_dict（key:含んでいるs番号集合、value:対応ノード集合）
+    return S, surrounding_sets, b_dict
+
+#集合被覆問題
+def set_cover(nodes, moveDist, sp):
+    # 周辺ノード集合
+    s_sets = get_surrounding_sets(nodes, moveDist, sp)
+    # b部分集合も作成
+    S, s_sets, b_dict = get_cover_subsets(s_sets)
+    # 部分集合リスト化
+    subset_list = s_sets + list(b_dict.values())
+    # 部分集合の個数
+    m = len(subset_list)
+    # 被覆されるべきノードリスト（インデックスで扱うため）
+    node_list = list(S)
+
+    # PuLP問題定義
+    prob = pulp.LpProblem("SetCoverExact", pulp.LpMinimize)
+
+    # 各部分集合を選ぶかバイナリ変数
+    x = [pulp.LpVariable(f"x_{i}", cat='Binary') for i in range(m)]
+
+    # 目的関数（最小カバー数）
+    prob += pulp.lpSum(x)
+
+    # 各ノードがカバーされる制約
+    for u in node_list:
+        covering = [i for i, s in enumerate(subset_list) if u in s]
+        prob += pulp.lpSum([x[i] for i in covering]) >= 1
+
+    # 求解
+    prob.solve()
+
+    # 選択された部分集合のインデックス
+    chosen_indices = [i for i, v in enumerate(x) if pulp.value(v) > 0.5]
+
+    rep_nodes = []
+    for idx in chosen_indices:
+        subset = list(subset_list[idx])
+        if subset:  # 空でなければ
+            rep_nodes.append(subset[0]) # すでにstr型
+
+    return rep_nodes
+
 #バス停問題
 def BusRouting(st, en, points, link, length, moveDist):
     #通るポイント(都市)
@@ -334,13 +468,9 @@ def BusRouting(st, en, points, link, length, moveDist):
         y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
         link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
         G_temp = linkToGraph(link_temp, length_temp)
-        connectGraph(G_temp)
-        sp_temp = ShortestPathFinder(G_temp)
         candidate = [p]
         for node in list(G_temp.nodes):
-            if node in G.nodes:
-                if sp_temp.len_SP(p, node) <= moveDist/1000:
-                    candidate.append(node)
+            candidate.append(node)
         candidates.append(candidate)
     candidates.append([shp[-1]])
 

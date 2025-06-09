@@ -33,12 +33,14 @@ var endPoint = [];
 var markers = [];
 var polylines = [];
 var circleMarkers = [];
+var circleLayers = [];
 var markerType = "location";
 var startMarkerFlag = false;
 var endMarkerFlag = false;
 var btn_TSP_isActive = false;
 var btn_SRP_isActive = false;
 var btn_random_isActive = false;
+var btn_test_isActive = false;
 
 // マウスクリックで緯度経度の取得とマーカー設置
 function onMapClick(e) {
@@ -95,6 +97,74 @@ function onEndMarkerClick(e) {
   map.removeLayer(e.target);
   endMarkerFlag = false;
 }
+
+//testボタン(集合被覆問題)
+const btn_test_text = document.getElementById('btn_test_text');
+const moveDist = document.getElementById('moveDist');
+$('#btn_test').click(function() {
+  btn_test_isActive = !btn_test_isActive;
+  if (btn_test_isActive) {
+    $(this).addClass('active');
+    var requestData = {
+            points:points,
+            moveDist:moveDist.value / 1000
+        };
+    $.ajax({
+        url: '/test',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(requestData),
+        success: function(response) {
+            var position = response.position;
+            var exec_time_sec = response.exec_time_sec;  
+
+            // 旧円を削除（重なり防止のため毎回消す）
+            circleLayers.forEach(function(circle) {
+                map.removeLayer(circle);
+            });
+            circleLayers = [];
+
+            points.forEach(function(pt) {
+                var circle = L.circle([pt[0], pt[1]], {
+                    radius: Number(moveDist.value),    // 単位: メートル
+                    color: 'green',
+                    fillColor: 'green',
+                    fillOpacity: 0.2      // 半透明
+                }).addTo(map);
+                circleLayers.push(circle);
+            });
+
+            // 実行時間を小数点3位まで四捨五入
+            var exec_time_round = Math.round(exec_time_sec * 1000) / 1000;
+
+            var html = 'Exec time：' + exec_time_round + ' sec';
+            btn_test_text.innerHTML = html;
+
+            $('#btn_test_text').removeClass('hidden');
+            var option = {
+              radius: 5,       
+              fillColor: "blue", 
+              color: "blue",     
+              opacity: 1,         
+              fillOpacity: 1
+            }
+            for(var i=0; i<position.length; i++) {
+              circleMarkers[i] = L.circleMarker(position[i], option).addTo(map);
+            }
+        }
+    });
+  } else {
+    $(this).removeClass('active'); // ボタンが押されていない表示にする
+    circleLayers.forEach(function(circle) {
+                map.removeLayer(circle);
+    });
+    for(var i=0; i<circleMarkers.length; i++) {
+        map.removeLayer(circleMarkers[i]);
+    }
+    $('#btn_TSP_text').addClass('hidden');
+  }
+
+});
 
 const btn_TSP_text = document.getElementById('btn_TSP_text');
 // 経路探索ボタンのクリックイベント
@@ -175,7 +245,6 @@ $('#btn_TSP').click(function() {
 });
 
 const btn_SRP_text = document.getElementById('btn_SRP_text');
-const moveDist = document.getElementById('moveDist');
 // BR探索ボタンのクリックイベント
 $('#btn_SRP').click(function() {
   btn_SRP_isActive = !btn_SRP_isActive; // 状態を反転させる
@@ -193,7 +262,7 @@ $('#btn_SRP').click(function() {
             points:points,
             startPoint:startPoint,
             endPoint:endPoint,
-            moveDist:moveDist.value,
+            moveDist:moveDist.value / 1000,
             value:checkValue
         };
     $.ajax({
@@ -263,6 +332,7 @@ $('#btn_SRP').click(function() {
   }
 });
 
+//ランダムボタン
 const random_num = document.getElementById('random_num');
 $('#btn_random').click(function() {
   btn_random_isActive = !btn_random_isActive; // 状態を反転させる
