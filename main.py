@@ -36,6 +36,12 @@ def TSP_path():
             endPoint = points[-1]
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
         link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+        G = pathSearch.linkToGraph(link, length)
+        pathSearch.connectGraph(G)
+        sp = pathSearch.ShortestPathFinder(G)
+        nodes = [sp.nearestNode(p) for p in points]
+        startPoint = sp.nearestNode(startPoint)
+        endPoint = sp.nearestNode(endPoint)
         # print(points)
 
         #TSPの場合
@@ -66,13 +72,13 @@ def TSP_path():
         
         if value == "type5":
             start_time = time.time()
-            path, len_path, per = pathSearch.path_SHP_branch_and_bound_with_queue(startPoint, endPoint, points, link, length)
+            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(startPoint, endPoint, nodes, sp)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
         if value == "type6":
             start_time = time.time()
-            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST(startPoint, endPoint, points, link, length)
+            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST(startPoint, endPoint, nodes, sp)
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
@@ -119,14 +125,25 @@ def SRP_path():
         else:
             endPoint = points.pop(-1)
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.05)
+        G = pathSearch.linkToGraph(link, length)
+        pathSearch.connectGraph(G)
+        sp = pathSearch.ShortestPathFinder(G)
+        nodes = [sp.nearestNode(p) for p in points]
+        startPoint = sp.nearestNode(startPoint)
+        endPoint = sp.nearestNode(endPoint)
 
         #経路探索
         start = time.time()
-        path, len, points_SRP, positions_SRP, path_positions, len_walk = pathSearch.BusRouting(startPoint, endPoint, points, link, length, moveDist)
+        if value == "type4":
+            path, len, positions_SRP, path_positions, len_walk = pathSearch.BusRouting(startPoint, endPoint, nodes, sp, moveDist)
+        if value == "type2":
+            path, len, positions_SRP, path_positions, len_walk = pathSearch.new_BusRouting(startPoint, endPoint, nodes, sp, moveDist)
+
+
         end = time.time() - start
 
-        return jsonify({'path': path, 'len': len, 'points_SRP': points_SRP, 'positions_SRP': positions_SRP, 'path_positions': path_positions, 'len_walk': len_walk})
+        return jsonify({'path': path, 'len': len, 'positions_SRP': positions_SRP, 'path_positions': path_positions, 'len_walk': len_walk, 'time': end})
     
     else:
         return jsonify({'message': 'Invalid request method'})
@@ -140,7 +157,7 @@ def test():
         moveDist = float(data['moveDist'])
 
         y1, x1, y2, x2 = pathSearch.rectangleArea(points)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.05)
 
         G = pathSearch.linkToGraph(link, length)
         pathSearch.connectGraph(G)
@@ -149,7 +166,7 @@ def test():
         nodes = [sp.nearestNode(p) for p in points]
 
         start_time = time.time()
-        p = pathSearch.set_cover(nodes, moveDist, sp)
+        p, _ = pathSearch.set_cover(nodes, moveDist, sp)
         elapsed_time = time.time() - start_time
 
         lst = [ [float(x) for x in s.strip('[]').split(',')] for s in p ]

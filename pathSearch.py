@@ -14,6 +14,7 @@ from scipy.spatial import KDTree
 from pyproj import Transformer
 import ast
 import pulp
+from itertools import combinations
 
 class ShortestPathFinder:
     len_dic = {}
@@ -99,6 +100,9 @@ class ShortestPathFinder:
         coord_km = self._latlon_to_km(latlon)
         idxs = type(self).kdtree.query_ball_point(coord_km, r_km)
         return [type(self).kdtree_nodes[i] for i in idxs]
+    
+    def SP(self, st, en):
+        return nx.dijkstra_path(self.G, st, en)
 
     def len_SP(self, node1, node2):
         # メモリキャッシュ
@@ -260,42 +264,42 @@ def travelingPath(points, link, length, value):
             path.append([float(x) for x in line.strip('[]').split(',')])
     return path, length, tsp
 
-# #経由点決定(あまのさん)
-# def viterbi_ver1(tsp, candidates, len_dic, G):
-#     #経由点集合
-#     positions_SRP = []
-#     #各候補点間の最短経路長を格納
-#     path_length = {}
-#     path_length[tsp[0]] = 0
-#     path_backtrack = {}
+#経由点決定(あまのさん)
+def viterbi_ver1(tsp, candidates, len_dic, G):
+    #経由点集合
+    positions_SRP = []
+    #各候補点間の最短経路長を格納
+    path_length = {}
+    path_length[tsp[0]] = 0
+    path_backtrack = {}
 
-#     #各候補点間の最短経路長を求める
-#     candidates[0] = [tsp[0]]
-#     for i in range(len(candidates)):
-#         n = i + 1
-#         if i == len(candidates)-1:
-#             n = 0
-#         for node in candidates[n]: 
-#             dist_min = float('inf')
-#             node_min = ""
-#             for node_prev in candidates[i]:
-#                 dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev]
-#                 if dist < dist_min:
-#                     dist_min = dist
-#                     node_min = node_prev
-#             path_length[node] = dist_min
-#             if node in path_backtrack:
-#                 path_backtrack[node][n] = node_min
-#             else:
-#                 path_backtrack[node] = {n:node_min}
+    #各候補点間の最短経路長を求める
+    candidates[0] = [tsp[0]]
+    for i in range(len(candidates)):
+        n = i + 1
+        if i == len(candidates)-1:
+            n = 0
+        for node in candidates[n]: 
+            dist_min = float('inf')
+            node_min = ""
+            for node_prev in candidates[i]:
+                dist = len_SP(G, node, node_prev, len_dic) + path_length[node_prev]
+                if dist < dist_min:
+                    dist_min = dist
+                    node_min = node_prev
+            path_length[node] = dist_min
+            if node in path_backtrack:
+                path_backtrack[node][n] = node_min
+            else:
+                path_backtrack[node] = {n:node_min}
             
-#     #各候補点間の最短経路を遡ることにより最短経路を得る
-#     node = path_backtrack[tsp[0]][0]
-#     for i in reversed(range(len(candidates))):
-#         positions_SRP.insert(0, node)
-#         node = path_backtrack[node][i]
+    #各候補点間の最短経路を遡ることにより最短経路を得る
+    node = path_backtrack[tsp[0]][0]
+    for i in reversed(range(len(candidates))):
+        positions_SRP.insert(0, node)
+        node = path_backtrack[node][i]
 
-#     return positions_SRP
+    return positions_SRP
 
 #経由点決定(乗客移動距離考慮)
 def viterbi_ver2(shp, candidates, sp, alpha=0.01):
@@ -366,98 +370,164 @@ def two_opt(path, sp):
             break
     return path
 
-def get_surrounding_sets(nodes, moveDist, sp):
-    surrounding_sets = []
-    for n in nodes:
-        # nodes_within_radiusがリストやセットを返すと仮定
-        surround = set(sp.nodes_within_radius(n, moveDist))
-        surrounding_sets.append(surround)
-    return surrounding_sets
+def greedy_set_cover(universe, subsets):
+    """
+    貪欲法による集合被覆問題の実装
+    universe: カバー対象の要素集合（set型）
+    subsets: 部分集合のリスト。各要素は set型。
+    
+    返値: 被覆に使った集合のインデックスリスト、被覆のリスト
+    """
+    covered = set()           # すでにカバーした要素
+    cover_indices = []        # 採用した部分集合のインデックス
+    cover_sets = []           # それぞれがカバーした集合
+    
+    subsets = [s.copy() for s in subsets] # 安全のためコピー
 
-def get_cover_subsets(surrounding_sets):
-    # surrounding_sets: [s1, s2, s3, ...] 各sはset
+    while covered != universe:
+        # 求めるのは「未カバー要素を最も多く含む部分集合」
+        max_new_cover = set()
+        max_idx = -1
+        for idx, s in enumerate(subsets):
+            new_cover = s - covered           # この部分集合が今回新たにカバーする要素
+            if len(new_cover) > len(max_new_cover):
+                max_new_cover = new_cover
+                max_idx = idx
+        
+        # これ以上増えない＝カバーできない要素がある
+        if not max_new_cover:
+            print("Error: カバー不可能な要素があります")
+            break
 
-    # 1. S = 全ノードの和集合
-    S = set().union(*surrounding_sets)
+        # 見つかった代表集合を記録
+        cover_indices.append(max_idx)
+        cover_sets.append(subsets[max_idx])
+        covered |= max_new_cover   # coveredを更新
 
-    # 2. 各ノードについて「どのsに属するか」を探索
-    node_to_si = dict()  # ノード: 属するsインデックス集合
-    for idx, s in enumerate(surrounding_sets):
-        for node in s:
-            node_to_si.setdefault(node, set()).add(idx)
-
-    # 3. 部分集合郡b1, b2,...を構築（同じs列に同時に属するものごとまとめる）
-    b_dict = dict()  # key: frozenset(indices), value: set(ノード群)
-    for node, si_set in node_to_si.items():
-        key = frozenset(si_set)
-        b_dict.setdefault(key, set()).add(node)
-
-    # 結果:
-    #   - S: 被覆すべきノード全体の集合
-    #   - s1, s2,...: surrounding_sets（インデックスで管理）
-    #   - b1, b2,...: b_dict（key:含んでいるs番号集合、value:対応ノード集合）
-    return S, surrounding_sets, b_dict
+    return cover_indices, cover_sets
 
 #集合被覆問題
 def set_cover(nodes, moveDist, sp):
-    # 周辺ノード集合
-    s_sets = get_surrounding_sets(nodes, moveDist, sp)
-    # b部分集合も作成
-    S, s_sets, b_dict = get_cover_subsets(s_sets)
-    # 部分集合リスト化
-    subset_list = s_sets + list(b_dict.values())
-    # 部分集合の個数
-    m = len(subset_list)
-    # 被覆されるべきノードリスト（インデックスで扱うため）
-    node_list = list(S)
+    S = [set(sp.nodes_within_radius(n, moveDist)) for n in nodes] #各ノードの周辺ノード
+    
+    S_int_idx = []
+    # 単一の集合
+    for idx in range(len(S)):
+        S_int_idx.append({idx})
+    # 2以上全てのサイズについて組み合わせを探索
+    for k in range(2, len(S)+1):
+        for idxs in combinations(range(len(S)), k):
+            # ノード同士が遠ければスキップ
+            skip = False
+            for idx1, idx2 in combinations(idxs, 2):
+                if sp.len_SP(nodes[idx1], nodes[idx2]) > moveDist*2.5:
+                    skip = True
+                    break
+            if skip:
+                continue
 
-    # PuLP問題定義
-    prob = pulp.LpProblem("SetCoverExact", pulp.LpMinimize)
+            # 共通部分を求める
+            intersect = S[idxs[0]].copy()
+            for idx in idxs[1:]:
+                intersect &= S[idx]
+            if intersect:
+                S_int_idx.append(set(idxs))
 
-    # 各部分集合を選ぶかバイナリ変数
-    x = [pulp.LpVariable(f"x_{i}", cat='Binary') for i in range(m)]
+    cover_indices, cover_sets = greedy_set_cover(set(range(len(S))), S_int_idx)
 
-    # 目的関数（最小カバー数）
-    prob += pulp.lpSum(x)
+    points = []
+    All_points = []
+    uni = set.union(*S)
+    for s in cover_sets:
+            if len(s) == 1:
+                points.extend(list(S[next(iter(s))]))
+                All_points.append([nodes[next(iter(s))]])
+            else:
+                s_temp = uni
+                for idx in s:
+                    s_temp = s_temp & S[idx]
+                points.extend(list(s_temp))
+                All_points.append(list(s_temp))
+    
+    return points, All_points
 
-    # 各ノードがカバーされる制約
-    for u in node_list:
-        covering = [i for i, s in enumerate(subset_list) if u in s]
-        prob += pulp.lpSum([x[i] for i in covering]) >= 1
+def new_BusRouting(st, en, points, sp, moveDist):
+    #set coverによりバス停を決定
+    nodes, nodes_set = set_cover(points, moveDist, sp)
+    
+    point_dic = {}
+    positions = []
+    for p in nodes:
+        positions.append(p)
+        point_dic[p] = p
+    point_dic[st] = st
+    point_dic[en] = en
+    
+    #SHPを解く
+    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, nodes, sp)
 
-    # 求解
-    prob.solve()
+    #対応付け
+    candidates = []
+    candidates.append([shp[0]])
+    temp_path = shp[1:-1]
+    index_map = {a: i for i, a in enumerate(nodes)}
+    candidates.extend([nodes_set[index_map[c]] for c in temp_path])
+    candidates.append([shp[-1]])
 
-    # 選択された部分集合のインデックス
-    chosen_indices = [i for i, v in enumerate(x) if pulp.value(v) > 0.5]
+    #順に候補点から経由点を決定
+    positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
+    positions_SRP = two_opt(positions_SRP, sp)
 
-    rep_nodes = []
-    for idx in chosen_indices:
-        subset = list(subset_list[idx])
-        if subset:  # 空でなければ
-            rep_nodes.append(subset[0]) # すでにstr型
+    
+    #巡回順に最短経路を求めて返却
+    path = []
+    length_SRP = 0
+    for i in range(len(positions_SRP)-1):
+        path_str = sp.SP(positions_SRP[i], positions_SRP[i+1])
+        length_SRP += sp.len_SP(positions_SRP[i], positions_SRP[i+1])
+        for line in path_str:
+            path.append([float(x) for x in line.strip('[]').split(',')])
 
-    return rep_nodes
+    #巡回順のクリックされた点の座標
+    points_SRP = []
+    for i in range(len(positions_SRP)):
+        p = points_move_dic[positions_SRP[i]]
+        points_SRP.append(point_dic[p[0]])
+        if len(p) > 1:
+            points_move_dic[positions_SRP[i]].pop(0)
 
+    #各移動先までの経路
+    path_positions = []
+    positions_SRP_a = []
+    len_walk = 0
+    for i in range(len(positions_SRP)):
+        positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
+        point = sp.nearestNode(points_SRP[i])
+        if point != positions_SRP[i]:
+            path_str = sp.SP(point, positions_SRP[i])
+            len_walk += sp.len_SP(point, positions_SRP[i])
+            path_temp = []
+            for line in path_str:
+                path_temp.append([float(x) for x in line.strip('[]').split(',')])
+            path_positions.append(path_temp)
+
+    # print(len(tsp))
+    # print(len(candidates))
+    # print(len(positions_SRP))
+
+    return path, length_SRP, positions_SRP_a, path_positions, len_walk
 #バス停問題
-def BusRouting(st, en, points, link, length, moveDist):
-    #通るポイント(都市)
+def BusRouting(st, en, points, sp, moveDist):
     point_dic = {}
     positions = []
     for p in points:
-        node = str(nearestNode(p, link))
+        node = sp.nearestNode(p)
         positions.append(node)
         point_dic[node] = p
-    point_dic[str(nearestNode(st, link))] = st
-    point_dic[str(nearestNode(en, link))] = en
-
-    #都市間の最短経路を求めるためのグラフ
-    G = linkToGraph(link, length)
-    connectGraph(G)
-    sp = ShortestPathFinder(G)
-    
+    point_dic[sp.nearestNode(st)] = st
+    point_dic[sp.nearestNode(en)] = en
     #SHPを解く
-    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, points, link, length)
+    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, points, sp)
 
     #乗客の移動候補ノードを取得
     candidates = []
@@ -483,7 +553,7 @@ def BusRouting(st, en, points, link, length, moveDist):
     path = []
     length_SRP = 0
     for i in range(len(positions_SRP)-1):
-        path_str = nx.dijkstra_path(G, positions_SRP[i], positions_SRP[i+1])
+        path_str = sp.SP(positions_SRP[i], positions_SRP[i+1])
         length_SRP += sp.len_SP(positions_SRP[i], positions_SRP[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
@@ -502,20 +572,16 @@ def BusRouting(st, en, points, link, length, moveDist):
     len_walk = 0
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
-        point = str(nearestNode(points_SRP[i], link))
+        point = points_SRP[i]
         if point != positions_SRP[i]:
-            path_str = nx.dijkstra_path(G, point, positions_SRP[i])
+            path_str = sp.SP(point, positions_SRP[i])
             len_walk += sp.len_SP(point, positions_SRP[i])
             path_temp = []
             for line in path_str:
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
 
-    # print(len(tsp))
-    # print(len(candidates))
-    # print(len(positions_SRP))
-
-    return path, length_SRP, points_SRP, positions_SRP_a, path_positions, len_walk
+    return path, length_SRP, positions_SRP_a, path_positions, len_walk
 
 def reorder_tsp_st_to_en(lst, st, en):
     n = len(lst)
@@ -837,21 +903,10 @@ def path_SHP_branch_and_bound_with_queue(st, en, points, link, length):
     # print(f"探索ノード数: {node_count} / 全探索: {full_search_steps} ({percent:.2f} %)")
     return ret_path, path_len, percent
 
-def path_SHP_branch_and_bound_with_queue_MST(st, en, points, link, length):
-    # 都市ノードリスト
-    positions = [str(nearestNode(p, link)) for p in points]
-    st = str(nearestNode(st, link))
-    en = str(nearestNode(en, link))
-
+def path_SHP_branch_and_bound_with_queue_MST(st, en, points, sp):
     # 都市セット（重複排除・順序問わず）
-    all_cities = list(set(positions + [st, en]))
+    all_cities = list(set(points + [st, en]))
     N = len(all_cities)
-
-    # 1. 経路グラフ準備
-    #    G_temp上で都市間距離をlen_SPで求める (最短路長)
-    G_temp = linkToGraph(link, length)
-    connectGraph(G_temp)
-    sp = ShortestPathFinder(G_temp)
 
     # 2. 距離テーブル構築
     #    city_dist[u][v] = len_SP(u,v)
@@ -968,7 +1023,7 @@ def path_SHP_branch_and_bound_with_queue_MST(st, en, points, link, length):
     path_len = 0
     if best['path']:
         for i in range(len(best['path'])-1):
-            spa = nx.dijkstra_path(G_temp, best['path'][i], best['path'][i+1])
+            spa = sp.SP(best['path'][i], best['path'][i+1])
             path_len += sp.len_SP(best['path'][i], best['path'][i+1])
             for line in spa:
                 ret_path.append([float(x) for x in line.strip('[]').split(',')])
@@ -976,6 +1031,161 @@ def path_SHP_branch_and_bound_with_queue_MST(st, en, points, link, length):
     percent = (node_count / full_search_steps) * 100
     return ret_path, path_len, percent, best['path']
 
+def path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(st, en, points, sp):
+    """
+    B&B探索において、MSTの下界見積もりを「葉ノード削除時のみ差分」でキャッシュ再利用して高速化する。
+    :param st: 始点
+    :param en: 終点
+    :param points: 途中必須地点のリスト
+    :param sp: 最短経路長/列計算オブジェクト (sp.len_SP(u, v), sp.SP(u, v)が使える)
+    :return: ret_path, path_len, percent, best['path']
+    """
+
+    # Step 1. 都市リスト生成
+    all_cities = list(set(points + [st, en]))
+    N = len(all_cities)
+
+    # Step 2. 距離テーブル構築
+    city_dist = {}
+    for u in all_cities:
+        city_dist[u] = {}
+        for v in all_cities:
+            if u == v:
+                city_dist[u][v] = 0
+            else:
+                city_dist[u][v] = sp.len_SP(u, v)
+
+    n_middle = N - 2  # st, enを除いた途中都市数
+
+    # 探索ノード数カウンタ
+    node_count = 0
+
+    # 全探索パス数 (始点/終点以外すべてを巡る順列)
+    full_search_steps = 1 if n_middle <= 0 else math.factorial(n_middle)
+
+    # 初期解: 貪欲法+MSTによる枝刈り高速化
+    best = {'cost': float('inf'), 'path': None}
+    curr = st
+    visited_greedy = {st}
+    greedy_path = [st]
+    greedy_cost = 0
+    while len(visited_greedy) < N - 1:  # en以外全部
+        candidates = set(all_cities) - visited_greedy - {en}
+        if not candidates:
+            break
+        next_city = min(candidates, key=lambda v: city_dist[curr][v])
+        greedy_path.append(next_city)
+        greedy_cost += city_dist[curr][next_city]
+        visited_greedy.add(next_city)
+        curr = next_city
+    greedy_path.append(en)
+    greedy_cost += city_dist[curr][en]
+    best = {'cost': greedy_cost, 'path': greedy_path}
+
+    # --- MSTキャッシュ(部分再利用) ---
+    mst_cache = {}  # frozenset(unvisitedノード): (mst_cost, mst_edges)
+
+    def get_MST_cost_and_edges(unvisited_cities):
+        key = frozenset(unvisited_cities)
+        if key in mst_cache:
+            return mst_cache[key]
+        if len(unvisited_cities) < 2:
+            mst_cache[key] = (0, [])
+            return 0, []
+        H = nx.Graph()
+        for a in unvisited_cities:
+            for b in unvisited_cities:
+                if a != b:
+                    H.add_edge(a, b, weight=city_dist[a][b])
+        mst_edges = list(nx.minimum_spanning_edges(H, data=True))
+        cost = sum(e[2]['weight'] for e in mst_edges)
+        edges = [(e[0], e[1], e[2]['weight']) for e in mst_edges]
+        mst_cache[key] = (cost, edges)
+        return cost, edges
+
+    def lower_bound(u, visited, curr_cost, prev_unvisited=None, prev_mst_cost=None, prev_mst_edges=None, removed_node=None):
+        """
+        現在地u, 訪問済set, 累積コスト + 直前MST情報による差分高速化
+        prev_unvisited, ...: 1つ前のunvisited等
+        removed_node: 今回追加(=前回unvisitedから外れた点, 候補v)
+        """
+        unvisited = set(all_cities) - visited - {en}
+        lb = curr_cost
+
+        mst_cost, mst_edges = None, None
+        # 差分最適化: 前回MSTから葉ノード1点だけ削除した場合
+        if not unvisited:
+            mst_cost = 0
+            mst_edges = []
+        elif prev_unvisited is not None and prev_mst_cost is not None and prev_mst_edges is not None and removed_node is not None:
+            if unvisited == prev_unvisited - {removed_node}:
+                # removed_nodeが前回MSTで葉ノードか
+                deg = 0
+                last_edge = None
+                for e in prev_mst_edges:
+                    if e[0] == removed_node or e[1] == removed_node:
+                        deg += 1
+                        last_edge = e
+                if deg == 1:
+                    mst_cost = prev_mst_cost - last_edge[2]
+                    mst_edges = [e for e in prev_mst_edges if not (removed_node in e[:2])]
+        # 差分適用できない場合はフル計算
+        if mst_cost is None:
+            mst_cost, mst_edges = get_MST_cost_and_edges(unvisited)
+        lb += mst_cost
+
+        # (2) u→unvisited最小
+        if unvisited:
+            min_enter = min(city_dist[u][v] for v in unvisited)
+            lb += min_enter
+            min_exit = min(city_dist[v][en] for v in unvisited)
+            lb += min_exit
+        return lb, unvisited, mst_cost, mst_edges  # 下界と次のMST情報
+
+    # ヒープ: (推定total下界, 現コスト, 現ノード, path, visited_set, prev_unvisited, prev_mst_cost, prev_mst_edges, last_addedノード)
+    heap = []
+    lb0, unvisited0, mst_cost0, mst_edges0 = lower_bound(st, {st}, 0, None, None, None, None)
+    heapq.heappush(heap, (lb0, 0, st, [st], {st}, unvisited0, mst_cost0, mst_edges0, None))
+
+    while heap:
+        est_total, curr_cost, u, path, visited, prev_unvisited, prev_mst_cost, prev_mst_edges, last_added = heapq.heappop(heap)
+        node_count += 1
+        # すべて通っていればenに移動して終了判定
+        if len(visited) == N - 1 and en not in visited:
+            total = curr_cost + city_dist[u][en]
+            if total < best['cost']:
+                best['cost'] = total
+                best['path'] = path + [en]
+            continue
+        # 分枝
+        for v in (set(all_cities) - visited - {en}):
+            new_cost = curr_cost + city_dist[u][v]
+            new_path = path + [v]
+            new_visited = visited | {v}
+            # 下界計算: prev_unvisited, prev_mst_cost, ...を渡し、今回はvを取り除く
+            lb, new_unvisited, new_mst_cost, new_mst_edges = lower_bound(
+                v, new_visited, new_cost,
+                prev_unvisited, prev_mst_cost, prev_mst_edges, v
+            )
+            if lb >= best['cost']:
+                continue
+            heapq.heappush(heap, (
+                lb, new_cost, v, new_path, new_visited,
+                new_unvisited, new_mst_cost, new_mst_edges, v
+            ))
+
+    # パス最短経路復元
+    ret_path = []
+    path_len = 0
+    if best['path']:
+        for i in range(len(best['path'])-1):
+            spa = sp.SP(best['path'][i], best['path'][i+1])
+            path_len += sp.len_SP(best['path'][i], best['path'][i+1])
+            for line in spa:
+                ret_path.append([float(x) for x in line.strip('[]').split(',')])
+
+    percent = (node_count / full_search_steps) * 100
+    return ret_path, path_len, percent, best['path']
 #########################################################################################
 class Routing:
     def __init__(self, link, length):

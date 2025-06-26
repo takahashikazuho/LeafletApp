@@ -161,7 +161,7 @@ $('#btn_test').click(function() {
     for(var i=0; i<circleMarkers.length; i++) {
         map.removeLayer(circleMarkers[i]);
     }
-    $('#btn_TSP_text').addClass('hidden');
+    $('#btn_test_text').addClass('hidden');
   }
 
 });
@@ -273,10 +273,10 @@ $('#btn_SRP').click(function() {
         success: function(response) {
             var path = response.path;
             var len = response.len;
-            var points_SRP = response.points_SRP;
             var positions_SRP = response.positions_SRP;
             var path_positions = response.path_positions;
             var len_walk = response.len_walk;
+            var time = Math.round(response.time * 1000) / 1000;
 
             // 経路を表示
             polyline2 = L.polyline(path, { color: 'blue' })
@@ -287,18 +287,8 @@ $('#btn_SRP').click(function() {
             }
             len = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
             len_walk = Math.round(len_walk * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_SRP_text.textContent = 'Traveling：' + len + 'km\nWalking：' + len_walk + 'km';
+            btn_SRP_text.textContent = 'Traveling：' + len + 'km\nWalking：' + len_walk + 'km\nExec time' + time + 's';
             $('#btn_SRP_text').removeClass('hidden');
-
-            //マーカーに巡回順を追加
-            for(var i=0; i<points_SRP.length; i++) {
-              points_SRP_latlng = L.latLng(points_SRP[i][0], points_SRP[i][1]);
-              for(var j=0; j<markers.length; j++) {
-                if(markers[j].getLatLng().equals(points_SRP_latlng)) {
-                  markers[j].bindPopup(String(i),{autoClose:false}).openPopup();
-                }
-              }
-            }
 
             //移動先の点を表示
             var option = {
