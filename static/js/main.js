@@ -287,7 +287,7 @@ $('#btn_SRP').click(function() {
             }
             len = Math.round(len * Math.pow(10, 3) ) / Math.pow(10, 3);
             len_walk = Math.round(len_walk * Math.pow(10, 3) ) / Math.pow(10, 3);
-            btn_SRP_text.textContent = 'Traveling：' + len + 'km\nWalking：' + len_walk + 'km\nExec time' + time + 's';
+            btn_SRP_text.textContent = 'Traveling：' + len + 'km\nWalking：' + len_walk + 'km\nExec time：' + time + 's';
             $('#btn_SRP_text').removeClass('hidden');
 
             //移動先の点を表示

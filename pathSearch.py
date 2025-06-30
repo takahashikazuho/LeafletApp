@@ -25,6 +25,7 @@ class ShortestPathFinder:
     zone = None
 
     def __init__(self, G, use_db_cache=False, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
+        connectGraph(G)
         self.G = G
         self.weight = weight
         self.use_db_cache = use_db_cache
@@ -147,6 +148,7 @@ class ShortestPathFinder:
         try:
             return nx.shortest_path_length(self.G, source=start, target=goal, weight=self.weight)
         except nx.NetworkXNoPath:
+            print("SP error")
             return None
 
     def _flush_bulk(self):
@@ -301,38 +303,39 @@ def viterbi_ver1(tsp, candidates, len_dic, G):
 
     return positions_SRP
 
-#経由点決定(乗客移動距離考慮)
+#経由点決定(SHP)
 def viterbi_ver2(shp, candidates, sp, alpha=0.01):
     positions_SRP = []
-    path_length = {}
+    path_length = {shp[0]: 0}
     path_backtrack = {}
 
-    path_length[shp[0]] = 0
-    for i in range(len(candidates)-1):
-        n = i + 1
-        for node in candidates[n]:
+    for i in range(1, len(candidates)):  # 1始まり
+        for node in candidates[i]:
             dist_min = float('inf')
             node_min = None
-            for node_prev in candidates[i]:
+            for node_prev in candidates[i-1]:
                 a = sp.len_SP(node, node_prev)
                 b = path_length[node_prev]
-                c = sp.len_SP(node, shp[n]) * alpha
-                dist = c + b + a
+                c = sp.len_SP(node, shp[i]) * alpha
+                dist = a + b + c
                 if dist < dist_min:
                     dist_min = dist
                     node_min = node_prev
             if node_min is None:
-                raise RuntimeError(f'No predecessor found for node {node} at step {n}')
+                raise RuntimeError(f'No predecessor found for node {node} at step {i}')
             path_length[node] = dist_min
             if node in path_backtrack:
-                path_backtrack[node][n] = node_min
+                path_backtrack[node][i] = node_min
             else:
-                path_backtrack[node] = {n: node_min}
-    node = shp[-1]
+                path_backtrack[node] = {i: node_min}
+
+    # 終点から逆順で戻す
+    node = shp[-1]  # 終点
     for i in reversed(range(1, len(candidates))):
         positions_SRP.insert(0, node)
         node = path_backtrack[node][i]
-    positions_SRP.insert(0, node)  # 始点分
+    positions_SRP.insert(0, node)  # 始点
+
     if len(positions_SRP) != len(shp):
         raise RuntimeError(f'positions_SRPとshpの長さが不一致です: {len(positions_SRP)} != {len(shp)}')
 
@@ -518,14 +521,13 @@ def new_BusRouting(st, en, points, sp, moveDist):
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
 #バス停問題
 def BusRouting(st, en, points, sp, moveDist):
-    point_dic = {}
-    positions = []
-    for p in points:
-        node = sp.nearestNode(p)
-        positions.append(node)
-        point_dic[node] = p
-    point_dic[sp.nearestNode(st)] = st
-    point_dic[sp.nearestNode(en)] = en
+    # point_dic = {}
+    # positions = []
+    # for p in points:
+    #     positions.append(p)
+    #     point_dic[p] = p
+    # point_dic[st] = st
+    # point_dic[st] = en
     #SHPを解く
     _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, points, sp)
 
@@ -534,15 +536,27 @@ def BusRouting(st, en, points, sp, moveDist):
     candidates.append([shp[0]])
     temp_path = shp[1:-1]
     for p in temp_path:
-        point = p.strip("[]").split(",")
-        y1, x1, y2, x2 = aroundRectagleArea(point[1], point[0], moveDist)
-        link_temp, length_temp = db.getRectangleRoadData(y1, x1, y2, x2)
-        G_temp = linkToGraph(link_temp, length_temp)
-        candidate = [p]
-        for node in list(G_temp.nodes):
-            candidate.append(node)
-        candidates.append(candidate)
+        candidates.append(sp.nodes_within_radius(p, moveDist))
     candidates.append([shp[-1]])
+
+    for step in range(1, len(candidates)):
+        pre = candidates[step-1]
+        filtered = []
+        for node in candidates[step]:
+            ok = False
+            for node_prev in pre:
+                dist = sp.len_SP(node, node_prev)
+                if dist is not None:
+                    ok = True
+                    break
+            if ok:
+                filtered.append(node)
+            else:
+                print(f"step{step}:ノード{node}は前段どこからも到達できない（孤立副候補）")
+        print(f"step {step}: {len(filtered)} candidates")
+        if not filtered:
+            raise RuntimeError(f"[早期fail] step {step} 候補全滅。moveDistやグラフ構造等を見直してください")
+        candidates[step] = filtered
 
     #順に候補点から経由点を決定
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
@@ -558,13 +572,16 @@ def BusRouting(st, en, points, sp, moveDist):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
 
-    #巡回順のクリックされた点の座標
-    points_SRP = []
-    for i in range(len(positions_SRP)):
-        p = points_move_dic[positions_SRP[i]]
-        points_SRP.append(point_dic[p[0]])
-        if len(p) > 1:
-            points_move_dic[positions_SRP[i]].pop(0)
+    # #巡回順のクリックされた点の座標
+    # points_SRP = []
+    # for i in range(len(positions_SRP)):
+    #     p = points_move_dic[positions_SRP[i]]
+    #     print(p)
+    #     print(p[0])
+    #     points_SRP.append(point_dic[p[0]])
+    #     if len(p) > 1:
+    #         points_move_dic[positions_SRP[i]].pop(0)
+    print(points_move_dic)
 
     #各移動先までの経路
     path_positions = []
@@ -572,7 +589,7 @@ def BusRouting(st, en, points, sp, moveDist):
     len_walk = 0
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
-        point = points_SRP[i]
+        point = points_move_dic[positions_SRP[i]][0]
         if point != positions_SRP[i]:
             path_str = sp.SP(point, positions_SRP[i])
             len_walk += sp.len_SP(point, positions_SRP[i])
