@@ -142,6 +142,9 @@ class ShortestPathFinder:
             self._bulk_buffer.append((str(node1), str(node2), dist))
             if len(self._bulk_buffer) >= self.bulk_size:
                 self._flush_bulk()
+        
+        if dist == float('inf'):
+            print("dist:inf")
         return dist
 
     def _dijkstra(self, start, goal):
@@ -437,7 +440,7 @@ def set_cover(nodes, moveDist, sp):
                 S_int_idx.append(set(idxs))
 
     cover_indices, cover_sets = greedy_set_cover(set(range(len(S))), S_int_idx)
-
+    print(cover_sets)
     points = []
     All_points = []
     uni = set.union(*S)
@@ -456,15 +459,11 @@ def set_cover(nodes, moveDist, sp):
 
 def new_BusRouting(st, en, points, sp, moveDist):
     #set coverによりバス停を決定
-    nodes, nodes_set = set_cover(points, moveDist, sp)
-    
-    point_dic = {}
-    positions = []
-    for p in nodes:
-        positions.append(p)
-        point_dic[p] = p
-    point_dic[st] = st
-    point_dic[en] = en
+    _n, nodes_set = set_cover(points, moveDist, sp)
+
+    nodes = []
+    for ns in nodes_set:
+        nodes.append(ns[0])
     
     #SHPを解く
     _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, nodes, sp)
@@ -477,6 +476,19 @@ def new_BusRouting(st, en, points, sp, moveDist):
     candidates.extend([nodes_set[index_map[c]] for c in temp_path])
     candidates.append([shp[-1]])
 
+    # shp_dash = []
+    # candidates_dash = []
+
+    # for s, cand in zip(shp, candidates):
+    #     n = len(cand)
+    #     shp_dash.extend([s] * n)
+    #     candidates_dash.extend([cand] * n)  # cand自体をそのまま複数回
+    
+    # print(shp_dash)
+    # print(candidates_dash)
+
+    print("SHP len:"+len(shp))
+
     #順に候補点から経由点を決定
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
     positions_SRP = two_opt(positions_SRP, sp)
@@ -491,21 +503,13 @@ def new_BusRouting(st, en, points, sp, moveDist):
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
 
-    #巡回順のクリックされた点の座標
-    points_SRP = []
-    for i in range(len(positions_SRP)):
-        p = points_move_dic[positions_SRP[i]]
-        points_SRP.append(point_dic[p[0]])
-        if len(p) > 1:
-            points_move_dic[positions_SRP[i]].pop(0)
-
     #各移動先までの経路
     path_positions = []
     positions_SRP_a = []
     len_walk = 0
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
-        point = sp.nearestNode(points_SRP[i])
+        point = points_move_dic[positions_SRP[i]][0]
         if point != positions_SRP[i]:
             path_str = sp.SP(point, positions_SRP[i])
             len_walk += sp.len_SP(point, positions_SRP[i])
@@ -514,20 +518,10 @@ def new_BusRouting(st, en, points, sp, moveDist):
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
 
-    # print(len(tsp))
-    # print(len(candidates))
-    # print(len(positions_SRP))
-
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
+
 #バス停問題
 def BusRouting(st, en, points, sp, moveDist):
-    # point_dic = {}
-    # positions = []
-    # for p in points:
-    #     positions.append(p)
-    #     point_dic[p] = p
-    # point_dic[st] = st
-    # point_dic[st] = en
     #SHPを解く
     _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, points, sp)
 
@@ -539,24 +533,7 @@ def BusRouting(st, en, points, sp, moveDist):
         candidates.append(sp.nodes_within_radius(p, moveDist))
     candidates.append([shp[-1]])
 
-    for step in range(1, len(candidates)):
-        pre = candidates[step-1]
-        filtered = []
-        for node in candidates[step]:
-            ok = False
-            for node_prev in pre:
-                dist = sp.len_SP(node, node_prev)
-                if dist is not None:
-                    ok = True
-                    break
-            if ok:
-                filtered.append(node)
-            else:
-                print(f"step{step}:ノード{node}は前段どこからも到達できない（孤立副候補）")
-        print(f"step {step}: {len(filtered)} candidates")
-        if not filtered:
-            raise RuntimeError(f"[早期fail] step {step} 候補全滅。moveDistやグラフ構造等を見直してください")
-        candidates[step] = filtered
+    print("SHP len:"+str(len(shp)))
 
     #順に候補点から経由点を決定
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
@@ -571,17 +548,6 @@ def BusRouting(st, en, points, sp, moveDist):
         length_SRP += sp.len_SP(positions_SRP[i], positions_SRP[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
-
-    # #巡回順のクリックされた点の座標
-    # points_SRP = []
-    # for i in range(len(positions_SRP)):
-    #     p = points_move_dic[positions_SRP[i]]
-    #     print(p)
-    #     print(p[0])
-    #     points_SRP.append(point_dic[p[0]])
-    #     if len(p) > 1:
-    #         points_move_dic[positions_SRP[i]].pop(0)
-    print(points_move_dic)
 
     #各移動先までの経路
     path_positions = []
