@@ -15,6 +15,7 @@ from pyproj import Transformer
 import ast
 import pulp
 from itertools import combinations
+import time
 
 class ShortestPathFinder:
     len_dic = {}
@@ -126,25 +127,30 @@ class ShortestPathFinder:
                     type(self).len_dic[node1] = {}
                 if length is not None:
                     type(self).len_dic[node1][node2] = length
+                    # 逆方向も保存
+                    if node2 not in self.len_dic:
+                        type(self).len_dic[node2] = {}
+                    type(self).len_dic[node2][node1] = length
                     return length
                 else:
                     return None
 
         # 計算
-        # このときノードIDはstr型("[lat, lon]")なのでGraphにはstrで登録されているはず
         dist = self._dijkstra(node1, node2)
         if node1 not in self.len_dic:
             type(self).len_dic[node1] = {}
+        if node2 not in self.len_dic:
+            type(self).len_dic[node2] = {}
         type(self).len_dic[node1][node2] = dist
+        type(self).len_dic[node2][node1] = dist  # ← 逆方向も格納
 
         # DBへのバッファ
         if self.use_db_cache:
             self._bulk_buffer.append((str(node1), str(node2), dist))
+            self._bulk_buffer.append((str(node2), str(node1), dist))  # DBも逆方向追記
             if len(self._bulk_buffer) >= self.bulk_size:
                 self._flush_bulk()
         
-        if dist == float('inf'):
-            print("dist:inf")
         return dist
 
     def _dijkstra(self, start, goal):
@@ -217,7 +223,7 @@ def connectGraph(G):
                 component2 = components[i + 1]
                 node1 = next(iter(component1))
                 node2 = next(iter(component2))
-                G.add_weighted_edges_from([(node1, node2, float('inf'))])
+                G.add_weighted_edges_from([(node1, node2, 1e9)])
 
 #リンクからグラフ生成
 def linkToGraph(link, length):
@@ -376,6 +382,18 @@ def two_opt(path, sp):
             break
     return path
 
+def bulk_prewarm_len_SP(sp, node_lists):
+    """
+    sp.len_SPを高速化するため、node_lists（2重リスト）中の現れ得る全ペアについて一括してキャッシュに登録する
+    """
+    all_nodes = set()
+    for nds in node_lists:
+        all_nodes.update(nds)
+    all_nodes = list(all_nodes)
+    for i in range(len(all_nodes)):
+        for j in range(len(all_nodes)):
+            _ = sp.len_SP(all_nodes[i], all_nodes[j])  # 不要な場合は片側・自己ループ除外も可
+
 def greedy_set_cover(universe, subsets):
     """
     貪欲法による集合被覆問題の実装
@@ -442,59 +460,62 @@ def set_cover(nodes, moveDist, sp):
     cover_indices, cover_sets = greedy_set_cover(set(range(len(S))), S_int_idx)
     print(cover_sets)
     points = []
-    All_points = []
+    points_set = []
     uni = set.union(*S)
     for s in cover_sets:
             if len(s) == 1:
                 points.extend(list(S[next(iter(s))]))
-                All_points.append([nodes[next(iter(s))]])
+                points_set.append(list(S[next(iter(s))]))
             else:
                 s_temp = uni
                 for idx in s:
                     s_temp = s_temp & S[idx]
                 points.extend(list(s_temp))
-                All_points.append(list(s_temp))
+                points_set.append(list(s_temp))
     
-    return points, All_points
+    return points, points_set, cover_sets
 
 def new_BusRouting(st, en, points, sp, moveDist):
-    #set coverによりバス停を決定
-    _n, nodes_set = set_cover(points, moveDist, sp)
+    import time
+    
+    time0 = time.time()
+
+    # set coverによりバス停を決定
+    t1 = time.time()
+    _n, nodes_set, cover_sets = set_cover(points, moveDist, sp)
+    t2 = time.time()
 
     nodes = []
     for ns in nodes_set:
         nodes.append(ns[0])
-    
-    #SHPを解く
-    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, nodes, sp)
 
-    #対応付け
+    # SHPを解く
+    t3 = time.time()
+    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, nodes, sp)
+    t4 = time.time()
+
+    # 対応付け
+    t5 = time.time()
     candidates = []
     candidates.append([shp[0]])
     temp_path = shp[1:-1]
     index_map = {a: i for i, a in enumerate(nodes)}
     candidates.extend([nodes_set[index_map[c]] for c in temp_path])
     candidates.append([shp[-1]])
+    t6 = time.time()
 
-    # shp_dash = []
-    # candidates_dash = []
-
-    # for s, cand in zip(shp, candidates):
-    #     n = len(cand)
-    #     shp_dash.extend([s] * n)
-    #     candidates_dash.extend([cand] * n)  # cand自体をそのまま複数回
-    
-    # print(shp_dash)
-    # print(candidates_dash)
-
-    print("SHP len:"+len(shp))
-
-    #順に候補点から経由点を決定
+    # Viterbi
+    t_vit1 = time.time()
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
-    positions_SRP = two_opt(positions_SRP, sp)
+    t_vit2 = time.time()
 
-    
-    #巡回順に最短経路を求めて返却
+    # two_opt
+    t_opt1 = time.time()
+    # positions_SRP = two_opt(positions_SRP, sp)
+    t_opt2 = time.time()
+
+    # 巡回順に最短経路を求めて返却
+    t9 = time.time()
     path = []
     length_SRP = 0
     for i in range(len(positions_SRP)-1):
@@ -502,24 +523,45 @@ def new_BusRouting(st, en, points, sp, moveDist):
         length_SRP += sp.len_SP(positions_SRP[i], positions_SRP[i+1])
         for line in path_str:
             path.append([float(x) for x in line.strip('[]').split(',')])
+    t10 = time.time()
 
-    #各移動先までの経路
+    # 各ポイント→割り当てバス停までの経路
+    t11 = time.time()
     path_positions = []
     positions_SRP_a = []
     len_walk = 0
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
-        point = points_move_dic[positions_SRP[i]][0]
-        if point != positions_SRP[i]:
-            path_str = sp.SP(point, positions_SRP[i])
-            len_walk += sp.len_SP(point, positions_SRP[i])
+
+    # ここから修正版
+    for i, p in enumerate(positions_SRP[1:-1]):
+        assigned_node = points_move_dic[p][0]
+        idx = nodes.index(assigned_node)
+        for idx2 in cover_sets[idx]:
+            path_str = sp.SP(points[idx2], p)
+            len_walk += sp.len_SP(points[idx2], p)
             path_temp = []
             for line in path_str:
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
+    # ここまで修正版
+
+    t12 = time.time()
+
+    print("--- 実行時間計測 ---")
+    print("set_cover: {:.3f}秒".format(t2-t1))
+    print("SHP: {:.3f}秒".format(t4-t3))
+    print("対応付け: {:.3f}秒".format(t6-t5))
+
+    print("Viterbi: {:.3f}秒".format(t_vit2-t_vit1))
+    print("two_opt: {:.3f}秒".format(t_opt2-t_opt1))
+
+    print("巡回経路計算: {:.3f}秒".format(t10-t9))
+    print("移動先までの経路: {:.3f}秒".format(t12-t11))
+    print("全体: {:.3f}秒".format(time.time()-time0))
+    print("-------------------")
 
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
-
 #バス停問題
 def BusRouting(st, en, points, sp, moveDist):
     #SHPを解く
@@ -533,7 +575,7 @@ def BusRouting(st, en, points, sp, moveDist):
         candidates.append(sp.nodes_within_radius(p, moveDist))
     candidates.append([shp[-1]])
 
-    print("SHP len:"+str(len(shp)))
+    print("SHP len : "+str(len(shp)))
 
     #順に候補点から経由点を決定
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)

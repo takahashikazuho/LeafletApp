@@ -148,6 +148,7 @@ $('#btn_test').click(function() {
               opacity: 1,         
               fillOpacity: 1
             }
+            circleMarkers = [];
             for(var i=0; i<position.length; i++) {
               circleMarkers[i] = L.circleMarker(position[i], option).addTo(map);
             }
@@ -161,6 +162,7 @@ $('#btn_test').click(function() {
     for(var i=0; i<circleMarkers.length; i++) {
         map.removeLayer(circleMarkers[i]);
     }
+    circleMarkers = [];
     $('#btn_test_text').addClass('hidden');
   }
 
@@ -227,6 +229,7 @@ $('#btn_TSP').click(function() {
               opacity: 1,         
               fillOpacity: 1
             }
+            circleMarkers = [];
             for(var i=0; i<position.length; i++) {
               circleMarkers[i] = L.circleMarker(position[i], option).addTo(map);
             }
@@ -239,6 +242,7 @@ $('#btn_TSP').click(function() {
       for(var i=0; i<circleMarkers.length; i++) {
         map.removeLayer(circleMarkers[i]);
       }
+      circleMarkers = [];
     }
     $('#btn_TSP_text').addClass('hidden');
   }
@@ -298,6 +302,7 @@ $('#btn_SRP').click(function() {
               opacity: 1,         
               fillOpacity: 1
             }
+            circleMarkers = [];
             for(var i=0; i<positions_SRP.length; i++) {
               circleMarkers[i] = L.circleMarker(positions_SRP[i], option).addTo(map);
             }
@@ -313,7 +318,7 @@ $('#btn_SRP').click(function() {
       for(var i=0; i<circleMarkers.length; i++) {
         map.removeLayer(circleMarkers[i]);
       }
-
+      circleMarkers = [];
     }
     for(var i=0; i<markers.length; i++) {
       markers[i].closePopup();

@@ -166,7 +166,7 @@ def test():
         nodes = [sp.nearestNode(p) for p in points]
 
         start_time = time.time()
-        p, _ = pathSearch.set_cover(nodes, moveDist, sp)
+        p, _, _ = pathSearch.set_cover(nodes, moveDist, sp)
         elapsed_time = time.time() - start_time
 
         lst = [ [float(x) for x in s.strip('[]').split(',')] for s in p ]
