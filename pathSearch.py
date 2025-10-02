@@ -103,8 +103,13 @@ class ShortestPathFinder:
         idxs = type(self).kdtree.query_ball_point(coord_km, r_km)
         return [type(self).kdtree_nodes[i] for i in idxs]
     
+    def euclidean(self, a, b):
+        a = list(map(float, a.strip("[]").split(',')))
+        b = list(map(float, b.strip("[]").split(',')))
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+    
     def SP(self, st, en):
-        return nx.dijkstra_path(self.G, st, en)
+        return nx.astar_path(self.G, st, en, heuristic=self.euclidean)
 
     def len_SP(self, node1, node2):
         # メモリキャッシュ
@@ -155,7 +160,7 @@ class ShortestPathFinder:
 
     def _dijkstra(self, start, goal):
         try:
-            return nx.shortest_path_length(self.G, source=start, target=goal, weight=self.weight)
+            return nx.astar_path_length(self.G, source=start, target=goal, heuristic=self.euclidean, weight=self.weight)
         except nx.NetworkXNoPath:
             print("SP error")
             return None
@@ -314,6 +319,9 @@ def viterbi_ver1(tsp, candidates, len_dic, G):
 
 #経由点決定(SHP)
 def viterbi_ver2(shp, candidates, sp, alpha=0.01):
+    #事前計算
+    # prewarm_len_SP(sp, shp, candidates)
+
     positions_SRP = []
     path_length = {shp[0]: 0}
     path_backtrack = {}
@@ -382,17 +390,42 @@ def two_opt(path, sp):
             break
     return path
 
-def bulk_prewarm_len_SP(sp, node_lists):
+def prewarm_len_SP(sp, shp, candidates):
     """
-    sp.len_SPを高速化するため、node_lists（2重リスト）中の現れ得る全ペアについて一括してキャッシュに登録する
+    Viterbi計算で必要となるノードペア（遷移、参照誘導）のみを事前に計算し、キャッシュを暖める。
     """
-    all_nodes = set()
-    for nds in node_lists:
-        all_nodes.update(nds)
-    all_nodes = list(all_nodes)
-    for i in range(len(all_nodes)):
-        for j in range(len(all_nodes)):
-            _ = sp.len_SP(all_nodes[i], all_nodes[j])  # 不要な場合は片側・自己ループ除外も可
+    
+    prewarm_pairs = set()
+
+    N = len(candidates)
+    
+    # 1. 遷移コスト (candidates[i-1] -> candidates[i])
+    for i in range(1, N):
+        current_nodes = candidates[i]
+        prev_nodes = candidates[i-1]
+        
+        for u in current_nodes:
+            # 遷移コスト (u -> v) のペアを追加
+            for v in prev_nodes:
+                prewarm_pairs.add((u, v))
+                prewarm_pairs.add((v, u)) # len_SPは双方向をキャッシュするため、逆方向も考慮
+
+    # 2. 参照経路誘導コスト (node -> shp[i])
+    # i=0 (始点) はコスト計算に含まれないため i=1 から N-1 まで
+    for i in range(1, N): 
+        current_nodes = candidates[i]
+        ref_node = shp[i]
+        
+        for u in current_nodes:
+            # 参照誘導コスト (u -> ref_node) のペアを追加
+            prewarm_pairs.add((u, ref_node))
+            prewarm_pairs.add((ref_node, u))
+            
+    # 距離の計算とキャッシュへの登録
+    for u, v in prewarm_pairs:
+        # sp.len_SP(u, v)を呼び出す。これにより、キャッシュにヒットしない場合のみDijkstra計算(_dijkstra)が実行される [4, 6]。
+        # 結果はメモリキャッシュ (len_dic) やDBキャッシュ (pathsテーブル) に格納される [3, 4]。
+        _ = sp.len_SP(u, v)
 
 def greedy_set_cover(universe, subsets):
     """
