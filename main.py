@@ -84,19 +84,13 @@ def TSP_path():
         
         #ORISの場合
         if value == "ORIS":
-            p_temp = []
-            for p in points:
-                p_temp.append(pathSearch.nearestNode(p, link))
-            points = p_temp
-
             #pointsの先頭から二個組ずつをクエリとする
             query = []
-            for i in range(0, len(points) - 1, 2):
-                query.append((str(points[i]), str(points[i + 1])))
-
-            R = pathSearch.Routing(link, length)
+            for i in range(0, len(nodes)-1, 2):
+                query.append((nodes[i], nodes[i+1]))
+            R = pathSearch.Routing(sp)
             start_time = time.time()
-            path, len_, position = R.find_optimal_stops(query, str(pathSearch.nearestNode(startPoint, link)), str(pathSearch.nearestNode(endPoint, link)))
+            path, len_, position = R.find_optimal_stops(query, startPoint, endPoint)
             elapsed_time = time.time() - start_time
 
             return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time})
