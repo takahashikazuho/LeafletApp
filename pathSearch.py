@@ -1429,19 +1429,12 @@ class Routing:
         for source in query_endpoints:
             for target in all_nodes:
                 cost = self.sp.len_SP(source, target)
-                # 歩行移動距離制約の反映
-                if cost > R1:
-                    SPC_cache[(source, target)] = 1e12
-                else:
-                    SPC_cache[(source, target)] = cost
+                SPC_cache[(source, target)] = cost
         
         for target in query_endpoints | {st, en}:
             for source in all_nodes:
                 cost = self.sp.len_SP(source, target)
-                if cost > R1:
-                    SPC_cache[(source, target)] = 1e12
-                else:
-                    SPC_cache[(source, target)] = cost
+                SPC_cache[(source, target)] = cost
 
         # 4.5 (d, π, T) ← INIT-VEHICLE
         d, pie, T, mark, _ = self.init_vehicle(Q, st, SPC_cache)
