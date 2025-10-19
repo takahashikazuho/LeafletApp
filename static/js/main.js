@@ -53,7 +53,6 @@ function onMapClick(e) {
                       .bindPopup(' start',{autoClose:false}).openPopup();
       startPoint = [e.latlng.lat, e.latlng.lng];
       startMarkerFlag = true;
-      markers.push(marker);
       break;
     case "location":
       marker = L.marker(e.latlng).on('click', onMarkerClick).addTo(map);
@@ -68,7 +67,6 @@ function onMapClick(e) {
                     .bindPopup('  end',{autoClose:false}).openPopup();
       endPoint = [e.latlng.lat, e.latlng.lng];
       endMarkerFlag = true;
-      markers.push(marker);
       break;
     default:
       break;
@@ -186,6 +184,7 @@ $('#btn_TSP').click(function() {
             points:points,
             startPoint:startPoint,
             endPoint:endPoint,
+            moveDist:moveDist.value / 1000,
             value:checkValue
         };
     $.ajax({
@@ -229,9 +228,9 @@ $('#btn_TSP').click(function() {
               opacity: 1,         
               fillOpacity: 1
             }
-            circleMarkers = [];
+            circleMarkers_1 = [];
             for(var i=0; i<position.length; i++) {
-              circleMarkers[i] = L.circleMarker(position[i], option).addTo(map);
+              circleMarkers_1[i] = L.circleMarker(position[i], option).addTo(map);
             }
         }
     });
@@ -239,10 +238,10 @@ $('#btn_TSP').click(function() {
     $(this).removeClass('active'); // ボタンが押されていない表示にする
     if (polyline) {
       map.removeLayer(polyline); // polyline を地図から削除
-      for(var i=0; i<circleMarkers.length; i++) {
-        map.removeLayer(circleMarkers[i]);
+      for(var i=0; i<circleMarkers_1.length; i++) {
+        map.removeLayer(circleMarkers_1[i]);
       }
-      circleMarkers = [];
+      circleMarkers_1 = [];
     }
     $('#btn_TSP_text').addClass('hidden');
   }

@@ -1247,12 +1247,11 @@ def path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(st, en, points, sp):
 #########################################################################################
 class Routing:
 
-    def __init__(self, sp, dist):
+    def __init__(self, sp):
         """
         Routingクラスの初期化。ShortestPathFinderインスタンスを引数として受け取る。
         """
         self.sp = sp  # ShortestPathFinderインスタンスを保持
-        self.dist = dist
         self.G = self.sp.G # spが保持するグラフGを利用
         self.len_dic = self.sp.len_dic # spのキャッシュを参照
 
@@ -1262,7 +1261,7 @@ class Routing:
         """
         return self.sp.len_SP(s, t) 
 
-    def init_vehicle(self, Q, st, SPC_cache, dist):
+    def init_vehicle(self, Q, st, SPC_cache):
         # Algorithm 4, Line 4.15-4.26 に相当
         d = {}
         pie = {}
@@ -1284,13 +1283,6 @@ class Routing:
         for q in Q:
             cost_s_st = SPC_cache.get((q[0], st), float('inf'))
             cost_d_st = SPC_cache.get((q[1], st), float('inf'))
-            
-            # === R1 (movedist) 制約の適用 ===
-            if dist is not None:
-                if cost_s_st > dist:
-                    cost_s_st = float('inf')
-                if cost_d_st > dist:
-                    cost_d_st = float('inf')
             
             d[st] += cost_s_st + cost_d_st
             
@@ -1420,8 +1412,10 @@ class Routing:
         path.insert(0, st)
         return path
 
-    def find_optimal_stops(self, Q, st, en, dist):
+    def find_optimal_stops(self, Q, st, en, R1=None):
         # Algorithm 4, Line 4.1-4.14 に相当
+        if R1 is None:
+            R1 = float('inf')
 
         # 4.3, 4.4: SPC (最短経路コスト) の事前計算
         # SPCの計算に self.sp.len_SP を利用して計算を委譲
@@ -1435,15 +1429,22 @@ class Routing:
         for source in query_endpoints:
             for target in all_nodes:
                 cost = self.sp.len_SP(source, target)
-                SPC_cache[(source, target)] = cost
+                # 歩行移動距離制約の反映
+                if cost > R1:
+                    SPC_cache[(source, target)] = 1e12
+                else:
+                    SPC_cache[(source, target)] = cost
         
         for target in query_endpoints | {st, en}:
             for source in all_nodes:
                 cost = self.sp.len_SP(source, target)
-                SPC_cache[(source, target)] = cost
+                if cost > R1:
+                    SPC_cache[(source, target)] = 1e12
+                else:
+                    SPC_cache[(source, target)] = cost
 
         # 4.5 (d, π, T) ← INIT-VEHICLE
-        d, pie, T, mark, _ = self.init_vehicle(Q, st, SPC_cache, dist)
+        d, pie, T, mark, _ = self.init_vehicle(Q, st, SPC_cache)
 
         # 4.6 PQ ← G.V
         PQ = [(d[node], node) for node in self.G.nodes if d[node] != float('inf')]
@@ -1500,99 +1501,3 @@ class Routing:
                 position.append(line)
 
         return path, length_path, position
-
-
-
-#########################################################################################
-def create_data_model(points, link, length, len_dic):
-    G = linkToGraph(link, length)
-    connectGraph(G)
-    sp = ShortestPathFinder(G)
-    positions = []
-    for p in points:
-        positions.append(str(nearestNode(p, link)))
-
-    data = {}
-    DM = []
-    for p in positions:
-        d = []
-        for q in positions:
-            d.append(sp.len_SP(p, q))
-        DM.append(d)
-
-    data["distance_matrix"] = DM
-    data["num_vehicles"] = 4
-    data["depot"] = 0
-
-    return data
-
-def print_solution(data, manager, routing, solution):
-    """Prints solution on console."""
-    print(f"Objective: {solution.ObjectiveValue()}")
-    max_route_distance = 0
-    for vehicle_id in range(data["num_vehicles"]):
-        index = routing.Start(vehicle_id)
-        plan_output = f"Route for vehicle {vehicle_id}:\n"
-        route_distance = 0
-        while not routing.IsEnd(index):
-            plan_output += f" {manager.IndexToNode(index)} -> "
-            previous_index = index
-            index = solution.Value(routing.NextVar(index))
-            route_distance += routing.GetArcCostForVehicle(
-                previous_index, index, vehicle_id
-            )
-        plan_output += f"{manager.IndexToNode(index)}\n"
-        plan_output += f"Distance of the route: {route_distance}m\n"
-        print(plan_output)
-        max_route_distance = max(route_distance, max_route_distance)
-    print(f"Maximum of the route distances: {max_route_distance}m")
-
-def mTSP(points, link, length, len_dic):
-    data = create_data_model(points, link, length, len_dic)
-    # Create the routing index manager.
-    manager = pywrapcp.RoutingIndexManager(
-        len(data["distance_matrix"]), data["num_vehicles"], data["depot"]
-    )
-
-    # Create Routing Model.
-    routing = pywrapcp.RoutingModel(manager)
-
-    # Create and register a transit callback.
-    def distance_callback(from_index, to_index):
-        """Returns the distance between the two nodes."""
-        # Convert from routing variable Index to distance matrix NodeIndex.
-        from_node = manager.IndexToNode(from_index)
-        to_node = manager.IndexToNode(to_index)
-        return data["distance_matrix"][from_node][to_node]
-
-    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
-
-    # Define cost of each arc.
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
-
-    # Add Distance constraint.
-    dimension_name = "Distance"
-    routing.AddDimension(
-        transit_callback_index,
-        0,  # no slack
-        3000,  # vehicle maximum travel distance
-        True,  # start cumul to zero
-        dimension_name,
-    )
-    distance_dimension = routing.GetDimensionOrDie(dimension_name)
-    distance_dimension.SetGlobalSpanCostCoefficient(100)
-
-    # Setting first solution heuristic.
-    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-    )
-
-    # Solve the problem.
-    solution = routing.SolveWithParameters(search_parameters)
-
-    # Print solution on console.
-    if solution:
-        print_solution(data, manager, routing, solution)
-    else:
-        print("No solution found !")

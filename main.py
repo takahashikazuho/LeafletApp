@@ -23,6 +23,7 @@ def TSP_path():
         startPoint = data['startPoint']
         endPoint = data['endPoint']
         value = data['value']
+        moveDist = float(data['moveDist'])
 
         #データベースから道路データを取得
         P = points.copy()
@@ -84,13 +85,13 @@ def TSP_path():
         
         #ORISの場合
         if value == "ORIS":
-            #pointsの先頭から二個組ずつをクエリとする
+            #クエリ生成(all destination = en)
             query = []
-            for i in range(0, len(nodes)-1, 2):
-                query.append((nodes[i], nodes[i+1]))
+            for p in nodes:
+                query.append((p, endPoint))
             R = pathSearch.Routing(sp)
             start_time = time.time()
-            path, len_, position = R.find_optimal_stops(query, startPoint, endPoint)
+            path, len_, position = R.find_optimal_stops(query, startPoint, endPoint, moveDist)
             elapsed_time = time.time() - start_time
 
             return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time})
