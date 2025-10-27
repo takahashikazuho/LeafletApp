@@ -91,10 +91,10 @@ def TSP_path():
                 query.append((p, endPoint))
             R = pathSearch.Routing(sp)
             start_time = time.time()
-            path, len_, position = R.find_optimal_stops(query, startPoint, endPoint)
+            path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint)
             elapsed_time = time.time() - start_time
 
-            return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time})
+            return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time, 'len_walk': len_walk})
 
     else:
         return jsonify({'message': 'Invalid request method'})

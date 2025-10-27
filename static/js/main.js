@@ -198,6 +198,7 @@ $('#btn_TSP').click(function() {
             var position = response.position;
             var exec_time_sec = response.exec_time_sec;  // 実行時間を取得
             var percent = response.percent;
+            var len_walk = response.len_walk;
 
             // 経路を表示
             polyline = L.polyline(path, { color: 'red' })
@@ -207,9 +208,11 @@ $('#btn_TSP').click(function() {
 
             // 実行時間を小数点3位まで四捨五入
             var exec_time_round = Math.round(exec_time_sec * 1000) / 1000;
+            len_walk = Math.round(len_walk * Math.pow(10, 3) ) / Math.pow(10, 3);
 
             var html = 
               'Length：' + len_round + 'km<br>' +
+              'Walking: ' + len_walk + 'km<br>' +
               'Exec time：' + exec_time_round + ' sec';
 
               if(percent !== undefined && percent !== null) {
