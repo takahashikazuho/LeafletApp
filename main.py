@@ -36,7 +36,7 @@ def TSP_path():
         else:
             endPoint = points[-1]
         y1, x1, y2, x2 = pathSearch.rectangleArea(P)
-        link, length = db.getRectangleRoadData(y1, x1, y2, x2)
+        link, length = db.getRectangleRoadData(y1, x1, y2, x2, 1.1)
         G = pathSearch.linkToGraph(link, length)
         pathSearch.connectGraph(G)
         sp = pathSearch.ShortestPathFinder(G)
@@ -52,36 +52,36 @@ def TSP_path():
             elapsed_time = time.time() - start_time
             return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
-        #パス型TSPの場合
-        if value == "type2":
-            start_time = time.time()
-            path, len_path = pathSearch.path_TSP_zero_edge(startPoint, endPoint, points, link, length)
-            elapsed_time = time.time() - start_time
-            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
+        # #パス型TSPの場合
+        # if value == "type2":
+        #     start_time = time.time()
+        #     path, len_path = pathSearch.path_TSP_zero_edge(startPoint, endPoint, points, link, length)
+        #     elapsed_time = time.time() - start_time
+        #     return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
-        if value == "type3":
-            start_time = time.time()
-            path, len_path = pathSearch.path_SHP_full_search(startPoint, endPoint, points, link, length)
-            elapsed_time = time.time() - start_time
-            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
+        # if value == "type3":
+        #     start_time = time.time()
+        #     path, len_path = pathSearch.path_SHP_full_search(startPoint, endPoint, points, link, length)
+        #     elapsed_time = time.time() - start_time
+        #     return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
-        if value == "type4":
-            start_time = time.time()
-            path, len_path = pathSearch.path_SHP_greedy(startPoint, endPoint, points, link, length)
-            elapsed_time = time.time() - start_time
-            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
+        # if value == "type4":
+        #     start_time = time.time()
+        #     path, len_path = pathSearch.path_SHP_greedy(startPoint, endPoint, points, link, length)
+        #     elapsed_time = time.time() - start_time
+        #     return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time})
         
-        if value == "type5":
-            start_time = time.time()
-            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(startPoint, endPoint, nodes, sp)
-            elapsed_time = time.time() - start_time
-            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
+        # if value == "type5":
+        #     start_time = time.time()
+        #     path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(startPoint, endPoint, nodes, sp)
+        #     elapsed_time = time.time() - start_time
+        #     return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
-        if value == "type6":
-            start_time = time.time()
-            path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST(startPoint, endPoint, nodes, sp)
-            elapsed_time = time.time() - start_time
-            return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
+        # if value == "type6":
+        #     start_time = time.time()
+        #     path, len_path, per, _p = pathSearch.path_SHP_branch_and_bound_with_queue_MST(startPoint, endPoint, nodes, sp)
+        #     elapsed_time = time.time() - start_time
+        #     return jsonify({'path': path, 'len': len_path, 'exec_time_sec': elapsed_time, 'percent': per})
         
         #ORISの場合
         if value == "ORIS":
@@ -92,6 +92,18 @@ def TSP_path():
             R = pathSearch.Routing(sp)
             start_time = time.time()
             path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint)
+            elapsed_time = time.time() - start_time
+            print(path)
+
+            return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time, 'len_walk': len_walk})
+        if value == "ORIS2":
+            #クエリ生成(all destination = en)
+            query = []
+            for p in nodes:
+                query.append((p, endPoint))
+            R = pathSearch.RoutingOptimal(sp)
+            start_time = time.time()
+            path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint, moveDist)
             elapsed_time = time.time() - start_time
 
             return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time, 'len_walk': len_walk})

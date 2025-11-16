@@ -47,4 +47,5 @@ def getRectangleRoadData(y1, x1, y2, x2, n = 1):
     cur.close()
     conn.close()
 
+    print("data loaded")
     return link, length
