@@ -337,7 +337,7 @@ def viterbi_ver1(tsp, candidates, len_dic, G):
     return positions_SRP
 
 #経由点決定(SHP)
-def viterbi_ver2(shp, candidates, sp, alpha=0.01):
+def viterbi_ver2(shp, candidates, sp, alpha=0.1):
     #事前計算
     # prewarm_len_SP(sp, shp, candidates)
 
@@ -1266,33 +1266,27 @@ def path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(st, en, points, sp):
 #########################################################################################
 import heapq
 import itertools
+import networkx as nx
 
 class Routing:
     def __init__(self, sp):
         self.sp = sp
-        self.G = sp.G  # Gノード名は"[lat, lon]"のstr
-
-        # ノードリスト(str)
+        self.G = sp.G
         self.all_nodes = list(self.G.nodes)
-        # unique 整数ID割り当て
         self.id2node = {i: n for i, n in enumerate(self.all_nodes)}
         self.node2id = {n: i for i, n in self.id2node.items()}
         self.counter = itertools.count()
 
     def node2id_fn(self, n):
-        ''' strノード→ID（int) '''
         if n in self.node2id:
             return self.node2id[n]
         else:
-            # ユーザ新規ノード追加時(あれば)。ここでは未登録ノードは例外に
             raise ValueError(f'ノード{n}は登録されていません')
 
     def id2node_fn(self, i):
-        ''' ID→ノード(str) '''
         return self.id2node[i]
 
     def idQ(self, Q):
-        ''' Q(ペア[str,str]のリスト)→ペア[ID,ID]のリストに変換 '''
         return [(self.node2id_fn(q[0]), self.node2id_fn(q[1])) for q in Q]
 
     def SPC(self, s, t):
@@ -1300,7 +1294,6 @@ class Routing:
         return self.sp.len_SP(n1, n2)
 
     def find_optimal_stops(self, Q, st, en, R1=float('inf')):
-        # 1. 全てIDに変換
         Q_id = self.idQ(Q)
         st_id = self.node2id_fn(st)
         en_id = self.node2id_fn(en)
@@ -1308,30 +1301,19 @@ class Routing:
         SPC_cache = {}
         endpoints = set(q[0] for q in Q_id) | set(q[1] for q in Q_id) | {st_id, en_id}
         all_ids = list(self.id2node.keys())
-
-        LN = float('inf')
         users_start = [q[0] for q in Q_id]
-        users_end = [q[1] for q in Q_id]
+        users_end   = [q[1] for q in Q_id]
 
         for source in endpoints:
             for target in all_ids:
                 s_str, t_str = self.id2node_fn(source), self.id2node_fn(target)
                 dist = self.sp.len_SP(s_str, t_str)
-                if source in users_start:
-                    if dist > R1:
-                        SPC_cache[(source, target)] = LN
-                    else:
-                        SPC_cache[(source, target)] = dist
-                elif source in users_end:
-                    if dist > R1:
-                        SPC_cache[(source, target)] = LN
-                    else:
-                        SPC_cache[(source, target)] = dist
+                if (source in users_start or source in users_end) and dist > R1:
+                    SPC_cache[(source, target)] = float('inf')
                 else:
                     SPC_cache[(source, target)] = dist
 
-        # d, pie, T, mark, stopすべてID辞書
-        d, pie, T, mark, stop = self.init_vehicle(Q_id, st_id, SPC_cache)
+        d, pie, T, mark, stop = self.init_vehicle(Q_id, st_id, SPC_cache, R1)
 
         PQ = []
         for node in self.id2node:
@@ -1348,23 +1330,20 @@ class Routing:
                 v = self.node2id_fn(v_str)
                 if not mark[v]:
                     weight = self.G[u_str][v_str].get('weight', 1)
-                    d, pie, T, PQ = self.relax_vehicle(u, v, weight, st_id, Q_id, SPC_cache, d, pie, T, PQ)
+                    d, pie, T, PQ = self.relax_vehicle(u, v, weight, st_id, Q_id, SPC_cache, d, pie, T, PQ, R1)
 
-        # 停車点抽出＋経路再構成(最終的にはstr返却)
-        P_id = self.vehicle_stops(st_id, en_id, pie, Q_id, SPC_cache)
+        P_id = self.vehicle_stops(st_id, en_id, pie, Q_id, SPC_cache, R1)
         path = []
         length_path = 0
         for i in range(len(P_id) - 1):
             u_str, v_str = self.id2node_fn(P_id[i]), self.id2node_fn(P_id[i + 1])
             path_str = self.sp.SP(u_str, v_str)
             length_path += self.sp.len_SP(u_str, v_str)
-            # SPはノードstrを返すのでパス復元はそのまま
             for line in path_str:
                 if isinstance(line, str):
                     path.append([float(x) for x in line.strip('[]').split(',')])
                 else:
                     path.append(line)
-        # 停車場所もstrに
         position = []
         for node in P_id:
             n_str = self.id2node_fn(node)
@@ -1373,57 +1352,44 @@ class Routing:
             else:
                 position.append(n_str)
 
-        # P_id(停車点)が空なら空解返すでOK（already done）
-
         walk_distances = []
         for passenger in Q_id:
             distances = [self.sp.len_SP(self.id2node_fn(passenger[0]), self.id2node_fn(stop))
                         for stop in list(P_id)]
-            # 距離リストが全部infなら全て徒歩不能
             finite_distances = [d for d in distances if d < float('inf')]
             if not finite_distances:
-                walk_distances.append(float('inf'))  # 全て到達不可
+                walk_distances.append(float('inf'))
             else:
                 walk_distances.append(min(finite_distances))
         total_walk = sum(walk_distances)
 
         return path, length_path, position, total_walk
 
-    # 以降全メソッド、引数はID型で管理したり返すときはid2nodeで変換します
-    # init_vehicle, relax_vehicle, vehicle_stops も必ずID運用＆最後はstrに変換
-
-    def init_vehicle(self, Q, st, SPC_cache):
+    def init_vehicle(self, Q, st, SPC_cache, R1=float('inf')):
         d = {}
         pie = {}
         T = {}
         mark = {}
         stop = {}
         for node in self.id2node:
-            d[node] = float('inf')
+            d[node] = 0 if node == st else float('inf')
             pie[node] = None
             T[node] = set()
             mark[node] = False
             stop[node] = False
-
-        d[st] = 0
         T[st].add((st, 0))
-        # 徒歩距離制約を守れない人は「その分はd[st]に加えず」「Tにも含めない」＝ルートには必須で乗れない
         for q in Q:
             cost_s_st = SPC_cache.get((q[0], st), float('inf'))
             cost_d_st = SPC_cache.get((q[1], st), float('inf'))
-            # どちらか到達不可ならスキップ or infの場合は解なしになるのが筋
             if cost_s_st == float('inf') or cost_d_st == float('inf'):
-                continue  # ここで飛ばす（もしくは即returnでもOK）
+                continue
             d[st] += cost_s_st + cost_d_st
             T[st].add((q[0], cost_s_st))
             T[st].add((q[1], cost_d_st))
-
-        # もしQ中に誰も徒歩可能でない場合、d[st]==0かつT[st]にst自身だけしか無い ⇒直後のヒューリスティックも必ず無解になる
         return d, pie, T, mark, stop
 
-    def relax_vehicle(self, u, v, c, st, Q, SPC_cache, d, pie, T, PQ):
+    def relax_vehicle(self, u, v, c, st, Q, SPC_cache, d, pie, T, PQ, R1=float('inf')):
         if u not in T or not any(item[0] == st for item in T[u]):
-            print("error : T is empty")
             return d, pie, T, PQ
 
         vehicle_cost_pair = next(item for item in T[u] if item[0] == st)
@@ -1440,14 +1406,12 @@ class Routing:
                         cs = tcost
                     elif tname == di:
                         cd = tcost
-
-            weight = 1.0
-            cost_si_v = SPC_cache.get((si, v), float('inf')) * weight
-            cost_di_v = SPC_cache.get((di, v), float('inf')) * weight
-
-            # if cost_si_v == float('inf') or cost_di_v == float('inf'):
-            #     print(f"脱落: {si}->{v}か{di}->{v}が徒歩距離制約より遠すぎる (cost_si_v={cost_si_v}, cost_di_v={cost_di_v})")
-            #     return d, pie, T, PQ
+            cost_si_v = SPC_cache.get((si, v), float('inf'))
+            cost_di_v = SPC_cache.get((di, v), float('inf'))
+            if cost_si_v == float('inf') or cost_di_v == float('inf'):
+                T_temp_v.add((si, float('inf')))
+                T_temp_v.add((di, float('inf')))
+                continue
 
             min_cd_cdi = min(cd if cd is not None else float('inf'), cost_di_v)
 
@@ -1470,7 +1434,28 @@ class Routing:
 
         return d, pie, T, PQ
 
-    def vehicle_stops(self, st, en, pie, Q, SPC_cache):
+    def vehicle_stops(self, st, en, pie, Q, SPC_cache, R1=float('inf')):
+        def insert_best_node_into_path(G, path, node):
+            min_total = float('inf')
+            best_path = None
+            # 挿入位置は始点直後から終点直前まで（始点・終点固定）
+            for i in range(1, len(path)):
+                candidate = path[:i] + [node] + path[i:]
+                try:
+                    total = 0
+                    for k in range(len(candidate)-1):
+                        u_str = self.id2node_fn(candidate[k])
+                        v_str = self.id2node_fn(candidate[k+1])
+                        total += nx.dijkstra_path_length(G, u_str, v_str)
+                    if total < min_total:
+                        min_total = total
+                        best_path = candidate
+                except nx.NetworkXNoPath:
+                    continue
+            return best_path if best_path is not None else path
+
+        if st not in self.id2node or en not in self.id2node:
+            return []
         path_list = []
         current = en
         while current is not None:
@@ -1482,6 +1467,61 @@ class Routing:
         if not path_list or path_list[0] != st or path_list[-1] != en:
             return []
 
+# --- 不到達ノードをパスに挿入 ---
+        while True:
+            best_delta = float('inf')
+            best_node = None
+            best_new_path = None
+            for si, di in Q:
+                # si探索
+                found_si = any(SPC_cache.get((si, v), float('inf')) <= R1 for v in path_list)
+                if not found_si:
+                    reachable_nodes = [
+                        n for n in self.id2node
+                        if SPC_cache.get((si, n), float('inf')) <= R1 and n not in path_list
+                    ]
+                    for n in reachable_nodes:
+                        cand_path = insert_best_node_into_path(self.G, path_list, n)
+                        # 経路長比較
+                        try:
+                            total = 0
+                            for k in range(len(cand_path)-1):
+                                u_str = self.id2node_fn(cand_path[k])
+                                v_str = self.id2node_fn(cand_path[k+1])
+                                total += nx.dijkstra_path_length(self.G, u_str, v_str)
+                        except nx.NetworkXNoPath:
+                            continue
+                        if total < best_delta:
+                            best_delta = total
+                            best_node = n
+                            best_new_path = cand_path
+                # di探索（同様に）
+                found_di = any(SPC_cache.get((di, v), float('inf')) <= R1 for v in path_list)
+                if not found_di:
+                    reachable_nodes = [
+                        n for n in self.id2node
+                        if SPC_cache.get((di, n), float('inf')) <= R1 and n not in path_list
+                    ]
+                    for n in reachable_nodes:
+                        cand_path = self.insert_best_node_into_path(self.G, path_list, n)
+                        try:
+                            total = 0
+                            for k in range(len(cand_path)-1):
+                                u_str = self.id2node_fn(cand_path[k])
+                                v_str = self.id2node_fn(cand_path[k+1])
+                                total += nx.dijkstra_path_length(self.G, u_str, v_str)
+                        except nx.NetworkXNoPath:
+                            continue
+                        if total < best_delta:
+                            best_delta = total
+                            best_node = n
+                            best_new_path = cand_path
+            # 挿入すべき候補ノードが見つからなければ終了
+            if best_node is None:
+                break
+            # 見つかったノードをパスに反映
+            path_list = best_new_path
+
         path_node_to_index = {node: idx for idx, node in enumerate(path_list)}
         stop_points = {node: False for node in path_list}
         for si, di in Q:
@@ -1489,6 +1529,7 @@ class Routing:
             min_dist_di = float('inf'); nearest_di = None
             for vp_node in path_list:
                 d_si = SPC_cache.get((si, vp_node), float('inf'))
+                if d_si > R1: continue
                 if d_si < min_dist_si:
                     min_dist_si = d_si
                     nearest_si = vp_node
@@ -1496,16 +1537,15 @@ class Routing:
                     if path_node_to_index[vp_node] < path_node_to_index.get(nearest_si, 1e9):
                         nearest_si = vp_node
                 d_di = SPC_cache.get((di, vp_node), float('inf'))
+                if d_di > R1: continue
                 if d_di < min_dist_di:
                     min_dist_di = d_di
                     nearest_di = vp_node
                 elif d_di == min_dist_di:
                     if path_node_to_index[vp_node] < path_node_to_index.get(nearest_di, 1e9):
                         nearest_di = vp_node
-            if nearest_si is not None:
-                stop_points[nearest_si] = True
-            if nearest_di is not None:
-                stop_points[nearest_di] = True
+            if nearest_si is not None: stop_points[nearest_si] = True
+            if nearest_di is not None: stop_points[nearest_di] = True
 
         stops_path = []
         for node in path_list:

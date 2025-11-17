@@ -91,7 +91,7 @@ def TSP_path():
                 query.append((p, endPoint))
             R = pathSearch.Routing(sp)
             start_time = time.time()
-            path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint)
+            path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint, moveDist)
             elapsed_time = time.time() - start_time
             print(path)
 
