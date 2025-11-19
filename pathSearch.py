@@ -24,7 +24,7 @@ class ShortestPathFinder:
     transformer = None
     zone = None
 
-    def __init__(self, G, use_db_cache=False, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
+    def __init__(self, G, use_db_cache=True, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
         connectGraph(G)
         self.G = G
         self.weight = weight
@@ -64,8 +64,6 @@ class ShortestPathFinder:
             self._init_db()
         else:
             self.conn = None
-
-        print("graph constructed")
 
     def _init_db(self):
         cur = self.conn.cursor()
@@ -510,7 +508,6 @@ def set_cover(nodes, moveDist, sp):
                 S_int_idx.append(set(idxs))
 
     cover_indices, cover_sets = greedy_set_cover(set(range(len(S))), S_int_idx)
-    print(cover_sets)
     points = []
     points_set = []
     uni = set.union(*S)
@@ -600,18 +597,18 @@ def new_BusRouting(st, en, points, sp, moveDist):
 
     t12 = time.time()
 
-    print("--- 実行時間計測 ---")
-    print("set_cover: {:.3f}秒".format(t2-t1))
-    print("SHP: {:.3f}秒".format(t4-t3))
-    print("対応付け: {:.3f}秒".format(t6-t5))
+    # print("--- 実行時間計測 ---")
+    # print("set_cover: {:.3f}秒".format(t2-t1))
+    # print("SHP: {:.3f}秒".format(t4-t3))
+    # print("対応付け: {:.3f}秒".format(t6-t5))
 
-    print("Viterbi: {:.3f}秒".format(t_vit2-t_vit1))
-    print("two_opt: {:.3f}秒".format(t_opt2-t_opt1))
+    # print("Viterbi: {:.3f}秒".format(t_vit2-t_vit1))
+    # print("two_opt: {:.3f}秒".format(t_opt2-t_opt1))
 
-    print("巡回経路計算: {:.3f}秒".format(t10-t9))
-    print("移動先までの経路: {:.3f}秒".format(t12-t11))
-    print("全体: {:.3f}秒".format(time.time()-time0))
-    print("-------------------")
+    # print("巡回経路計算: {:.3f}秒".format(t10-t9))
+    # print("移動先までの経路: {:.3f}秒".format(t12-t11))
+    # print("全体: {:.3f}秒".format(time.time()-time0))
+    # print("-------------------")
 
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
 #バス停問題
