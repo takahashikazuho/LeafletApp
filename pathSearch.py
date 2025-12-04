@@ -25,7 +25,7 @@ class ShortestPathFinder:
     zone = None
 
     def __init__(self, G, use_db_cache=True, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
-        connectGraph(G)
+        # connectGraph(G)
         self.G = G
         self.weight = weight
         self.use_db_cache = use_db_cache
@@ -219,6 +219,7 @@ def nearestNode(p, link):
 
 #Gを連結グラフにする
 def connectGraph(G):
+    #遅いからかえたほうがいい
     def extract_lat_lon(node_str):
         lat, lon = ast.literal_eval(node_str)
         return float(lat), float(lon)

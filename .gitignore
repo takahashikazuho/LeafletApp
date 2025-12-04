@@ -1,5 +1,5 @@
 __pycache__/*
 data.csv
-test.ipynb
 cache/*
 paths.db
+graph.pkl
