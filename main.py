@@ -93,7 +93,7 @@ def TSP_path():
             start_time = time.time()
             path, len_, position, len_walk = R.find_optimal_stops(query, startPoint, endPoint, moveDist)
             elapsed_time = time.time() - start_time
-            print(path)
+            print(moveDist)
 
             return jsonify({'path': path, 'len': len_, 'position': position, 'exec_time_sec': elapsed_time, 'len_walk': len_walk})
         if value == "ORIS2":

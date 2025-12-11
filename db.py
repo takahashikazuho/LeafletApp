@@ -11,7 +11,7 @@ PORT = 5432
 
 #矩形範囲の道路データを取得する
 #(y1, x1):左上の緯度経度 (y2, x2):右下の緯度経度 n:範囲を拡大する倍率
-def getRectangleRoadData(y1, x1, y2, x2, n = 1):
+def getRectangleRoadData(y1, x1, y2, x2, n = 1.1):
     x = abs(x2-x1)
     y = abs(y2-y1)
     x1 = x1-x*(n-1)

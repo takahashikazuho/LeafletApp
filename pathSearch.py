@@ -2,182 +2,117 @@
 経路探索などを行う
 """
 import math
-import sqlite3
 import networkx as nx
 import pyproj
-import db
 import heapq
 import itertools
 from scipy.spatial import KDTree
 from pyproj import Transformer
 import ast
-import pulp
 from itertools import combinations
 import time
 import numpy as np
+import ast
+from collections import defaultdict
+from scipy.spatial import KDTree
+import networkx as nx
+from pyproj import Transformer
+
+from collections import defaultdict
+import ast
+import networkx as nx
+from pyproj import Transformer
+from scipy.spatial import KDTree
+
 
 class ShortestPathFinder:
-    len_dic = {}
+    len_dic = defaultdict(dict)      # メモリキャッシュ：辞書の辞書
     kdtree = None
     kdtree_nodes = None
     kdtree_coords_km = None
     transformer = None
     zone = None
 
-    def __init__(self, G, use_db_cache=True, db_path="paths.db", weight="weight", bulk_size=100, utm_zone=54):
-        # connectGraph(G)
+    def __init__(self, G, weight="weight", utm_zone=54, len_dic=defaultdict(dict)):
         self.G = G
         self.weight = weight
-        self.use_db_cache = use_db_cache
-        self.bulk_size = bulk_size
-        self._bulk_buffer = []
         self.zone = utm_zone
+        type(self).len_dic = len_dic
 
-        # UTM zone(日本ゾーン 51-56)、EPSG:3097 + (zone-51)
+        # UTM変換用transformer初期化
         epsg_code = 3097 + (utm_zone - 51)
         crs_utm = f"EPSG:{epsg_code}"
 
-        # transformer（zoneが変わったら再作成）
         if (type(self).transformer is None) or (type(self).zone != utm_zone):
             type(self).transformer = Transformer.from_crs("epsg:4326", crs_utm, always_xy=True)
             type(self).zone = utm_zone
 
-        # KDTree初期化（グラフやzone更新時のみ再作成）
+        # KDTree初期化（ノードリストが変わったら再作成）
         nodes = list(G.nodes)
         if (type(self).kdtree is None or
             type(self).kdtree_nodes != nodes or
             type(self).zone != utm_zone):
-
             coords_km = []
             for node_str in nodes:
-                latlon = ast.literal_eval(node_str)  # [lat, lon] にパース
-                # transform(lon, lat)
+                latlon = ast.literal_eval(node_str)  # [lat, lon]
                 x, y = type(self).transformer.transform(latlon[1], latlon[0])
-                coords_km.append([x/1000, y/1000])
+                coords_km.append([x / 1000, y / 1000])
             type(self).kdtree = KDTree(coords_km)
-            type(self).kdtree_nodes = nodes  # = list of str
+            type(self).kdtree_nodes = nodes
             type(self).kdtree_coords_km = coords_km
 
-        # DBキャッシュ
-        if self.use_db_cache:
-            self.conn = sqlite3.connect(db_path)
-            self._init_db()
-        else:
-            self.conn = None
-
-    def _init_db(self):
-        cur = self.conn.cursor()
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS paths (
-                coord1 TEXT,
-                coord2 TEXT,
-                length REAL,
-                PRIMARY KEY (coord1, coord2)
-            )
-        ''')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_coord1 ON paths(coord1)')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_pair ON paths(coord1, coord2)')
-        self.conn.commit()
-
     def _latlon_to_km(self, latlon):
-        # 入力: [lat, lon]リスト
         x, y = type(self).transformer.transform(latlon[1], latlon[0])
-        return [x/1000, y/1000]
+        return [x / 1000, y / 1000]
 
     def nearestNode(self, p):
-        """
-        p: [lat, lon]リスト。KDTreeで最近傍ノード（ノードのstr型＝"[lat, lon]"）を返す。
-        """
         coord_km = self._latlon_to_km(p)
         dist, idx = type(self).kdtree.query(coord_km)
-        return type(self).kdtree_nodes[idx]  # 返値はstr型
+        return type(self).kdtree_nodes[idx]
 
     def nodes_within_radius(self, p, r_km):
-        """
-        p: "[lat, lon]"形式str, r_km: 距離km
-        返値: "[lat, lon]" 形式strのリスト
-        """
-        latlon = ast.literal_eval(p)  # "[lat,lon]" → [lat, lon]リスト
+        latlon = ast.literal_eval(p)
         coord_km = self._latlon_to_km(latlon)
         idxs = type(self).kdtree.query_ball_point(coord_km, r_km)
         return [type(self).kdtree_nodes[i] for i in idxs]
-    
+
     def euclidean(self, a, b):
         a = list(map(float, a.strip("[]").split(',')))
         b = list(map(float, b.strip("[]").split(',')))
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
-    
-    def SP(self, st, en):
-        return nx.astar_path(self.G, st, en, heuristic=self.euclidean)
 
     def len_SP(self, node1, node2):
+        # ノードペアを順序正規化（片方向のみ保存/検索, 無向グラフ想定）
+        key1, key2 = min(str(node1), str(node2)), max(str(node1), str(node2))
+
         # メモリキャッシュ
         try:
-            return type(self).len_dic[node1][node2]
+            return type(self).len_dic[key1][key2]
         except KeyError:
             pass
 
-        # DBキャッシュ
-        if self.use_db_cache:
-            cur = self.conn.cursor()
-            cur.execute(
-                "SELECT length FROM paths WHERE coord1=? AND coord2=?",
-                (str(node1), str(node2))
+        # 最短路計算
+        try:
+            dist = nx.astar_path_length(
+                self.G,
+                source=node1,
+                target=node2,
+                heuristic=self.euclidean,
+                weight=self.weight
             )
-            hit = cur.fetchone()
-            if hit is not None:
-                length = hit[0]
-                if node1 not in self.len_dic:
-                    type(self).len_dic[node1] = {}
-                if length is not None:
-                    type(self).len_dic[node1][node2] = length
-                    # 逆方向も保存
-                    if node2 not in self.len_dic:
-                        type(self).len_dic[node2] = {}
-                    type(self).len_dic[node2][node1] = length
-                    return length
-                else:
-                    return None
+        except nx.NetworkXNoPath:
+            dist = None
 
-        # 計算
-        dist = self._dijkstra(node1, node2)
-        if node1 not in self.len_dic:
-            type(self).len_dic[node1] = {}
-        if node2 not in self.len_dic:
-            type(self).len_dic[node2] = {}
-        type(self).len_dic[node1][node2] = dist
-        type(self).len_dic[node2][node1] = dist  # ← 逆方向も格納
-
-        # DBへのバッファ
-        if self.use_db_cache:
-            self._bulk_buffer.append((str(node1), str(node2), dist))
-            self._bulk_buffer.append((str(node2), str(node1), dist))  # DBも逆方向追記
-            if len(self._bulk_buffer) >= self.bulk_size:
-                self._flush_bulk()
-        
+        type(self).len_dic[key1][key2] = dist
         return dist
 
-    def _dijkstra(self, start, goal):
-        try:
-            return nx.astar_path_length(self.G, source=start, target=goal, heuristic=self.euclidean, weight=self.weight)
-        except nx.NetworkXNoPath:
-            print("SP error")
-            return None
-
-    def _flush_bulk(self):
-        if self.use_db_cache and self._bulk_buffer:
-            cur = self.conn.cursor()
-            cur.executemany(
-                "INSERT OR IGNORE INTO paths (coord1, coord2, length) VALUES (?, ?, ?)",
-                self._bulk_buffer
-            )
-            self.conn.commit()
-            self._bulk_buffer = []
-
     def close(self):
-        self._flush_bulk()
-        if self.conn:
-            self.conn.close()
+        # 何もしないが、呼び出し側の既存コード互換のため残す
+        pass
+
+    # 利便性のため直接A*経路も返す関数
+    def SP(self, st, en):
+        return nx.astar_path(self.G, st, en, heuristic=self.euclidean, weight=self.weight)
 
 #クリックされた点郡を含む最小の矩形領域
 def rectangleArea(points):
@@ -218,35 +153,81 @@ def nearestNode(p, link):
     return nearestNode
 
 #Gを連結グラフにする
+import ast
+import numpy as np
+import networkx as nx
+from scipy.spatial import cKDTree
+from math import radians, sin, cos, asin, sqrt
+
+# 2点間の地理的距離[km]を返す関数（haversine）
+def haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0  # 地球半径[km]
+    # ラジアン変換
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = sin(dlat / 2.0)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0)**2
+    c = 2 * asin(sqrt(a))
+    return R * c
+
 def connectGraph(G):
-    #遅いからかえたほうがいい
-    def extract_lat_lon(node_str):
-        lat, lon = ast.literal_eval(node_str)
-        return float(lat), float(lon)
-    
-    def euclidean_dist(node1, node2):
-        lat1, lon1 = extract_lat_lon(node1)
-        lat2, lon2 = extract_lat_lon(node2)
-        return np.sqrt((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2)
-    
+    # ノード名 → 座標の辞書 (文字列 "lat, lon" を想定)
+    node_pos = {}
+    for node in G.nodes:
+        lat, lon = ast.literal_eval(node)
+        node_pos[node] = (float(lat), float(lon))
+
     while not nx.is_connected(G):
+        # 連結成分を取得
         components = list(nx.connected_components(G))
-        best_pair = None
-        best_dist = float('inf')
+        centroids = []
+        comp_nodes_list = []
+
+        # 各成分の重心（単純な平均）を計算
+        for comp in components:
+            nodes = list(comp)
+            comp_nodes_list.append(nodes)
+            coords = np.array([node_pos[node] for node in nodes])  # (lat, lon)
+            centroid = coords.mean(axis=0)
+            centroids.append(centroid)
+
+        # 代表点（重心）間の最近傍ペア
+        centroids = np.array(centroids)
+        centroid_tree = cKDTree(centroids)
+        min_dist = float('inf')
+        min_pair = (None, None, None, None)  # (comp_idx1, comp_idx2, node1, node2)
+
         for i in range(len(components)):
-            for j in range(i + 1, len(components)):
-                comp1 = components[i]
-                comp2 = components[j]
-                for node1 in comp1:
-                    for node2 in comp2:
-                        dist = euclidean_dist(node1, node2)
-                        if dist < best_dist:
-                            best_dist = dist
-                            best_pair = (node1, node2)
-        if best_pair is not None:
-            G.add_weighted_edges_from([(best_pair[0], best_pair[1], best_dist)])
-        else:
-            break
+            dist, j = centroid_tree.query(centroids[i], k=2)  # 自身 + 最近傍
+            if j[1] != i and dist[1] < min_dist:
+                ci, cj = i, j[1]
+                min_dist = dist[1]
+                min_pair = (ci, cj, None, None)
+
+        # 上で選んだ2成分間の最近傍ノードペアを探す
+        ci, cj, _, _ = min_pair
+        nodes1 = comp_nodes_list[ci]
+        nodes2 = comp_nodes_list[cj]
+        coords2 = np.array([node_pos[n] for n in nodes2])
+        tree2 = cKDTree(coords2)
+
+        best_euclid = float('inf')
+        best_pair = (None, None)
+        for n1 in nodes1:
+            d, ix = tree2.query(node_pos[n1])  # ここはユークイド距離（探索用）
+            if d < best_euclid:
+                best_euclid = d
+                best_pair = (n1, nodes2[ix])
+
+        # 緯度経度から地理的距離(km)を計算してエッジ重みとする
+        lat1, lon1 = node_pos[best_pair[0]]
+        lat2, lon2 = node_pos[best_pair[1]]
+        geo_dist_km = haversine_km(lat1, lon1, lat2, lon2)
+
+        # 辺を追加（重み=地理的距離[km]）
+        G.add_weighted_edges_from([(best_pair[0], best_pair[1], geo_dist_km)])
 
 #リンクからグラフ生成
 def linkToGraph(link, length):
@@ -336,10 +317,7 @@ def viterbi_ver1(tsp, candidates, len_dic, G):
     return positions_SRP
 
 #経由点決定(SHP)
-def viterbi_ver2(shp, candidates, sp, alpha=0.1):
-    #事前計算
-    # prewarm_len_SP(sp, shp, candidates)
-
+def viterbi_ver2(shp, candidates, sp, alpha=0.33):
     positions_SRP = []
     path_length = {shp[0]: 0}
     path_backtrack = {}
@@ -532,6 +510,7 @@ def new_BusRouting(st, en, points, sp, moveDist):
 
     # set coverによりバス停を決定
     t1 = time.time()
+    moveDist = moveDist*0.9
     _n, nodes_set, cover_sets = set_cover(points, moveDist, sp)
     t2 = time.time()
 
@@ -559,11 +538,6 @@ def new_BusRouting(st, en, points, sp, moveDist):
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
     t_vit2 = time.time()
 
-    # two_opt
-    t_opt1 = time.time()
-    # positions_SRP = two_opt(positions_SRP, sp)
-    t_opt2 = time.time()
-
     # 巡回順に最短経路を求めて返却
     t9 = time.time()
     path = []
@@ -575,6 +549,8 @@ def new_BusRouting(st, en, points, sp, moveDist):
             path.append([float(x) for x in line.strip('[]').split(',')])
     t10 = time.time()
 
+    
+
     # 各ポイント→割り当てバス停までの経路
     t11 = time.time()
     path_positions = []
@@ -583,7 +559,6 @@ def new_BusRouting(st, en, points, sp, moveDist):
     for i in range(len(positions_SRP)):
         positions_SRP_a.append(positions_SRP[i].strip("[]").split(","))
 
-    # ここから修正版
     for i, p in enumerate(positions_SRP[1:-1]):
         assigned_node = points_move_dic[p][0]
         idx = nodes.index(assigned_node)
@@ -594,22 +569,30 @@ def new_BusRouting(st, en, points, sp, moveDist):
             for line in path_str:
                 path_temp.append([float(x) for x in line.strip('[]').split(',')])
             path_positions.append(path_temp)
-    # ここまで修正版
 
     t12 = time.time()
 
-    # print("--- 実行時間計測 ---")
-    # print("set_cover: {:.3f}秒".format(t2-t1))
-    # print("SHP: {:.3f}秒".format(t4-t3))
-    # print("対応付け: {:.3f}秒".format(t6-t5))
+    print("--- 実行時間計測 ---")
+    total = time.time() - time0
 
-    # print("Viterbi: {:.3f}秒".format(t_vit2-t_vit1))
-    # print("two_opt: {:.3f}秒".format(t_opt2-t_opt1))
+    set_cover_time = t2 - t1
+    SHP_time = t4 - t3
+    mapping_time = t6 - t5
+    Viterbi_time = t_vit2 - t_vit1
+    route_time = t10 - t9
+    move_time = t12 - t11
 
-    # print("巡回経路計算: {:.3f}秒".format(t10-t9))
-    # print("移動先までの経路: {:.3f}秒".format(t12-t11))
-    # print("全体: {:.3f}秒".format(time.time()-time0))
-    # print("-------------------")
+    def percent(val):
+        return (val/total)*100 if total > 0 else 0
+
+    print("set_cover: {:.3f}秒 ({:.1f}%)".format(set_cover_time, percent(set_cover_time)))
+    print("SHP: {:.3f}秒 ({:.1f}%)".format(SHP_time, percent(SHP_time)))
+    print("対応付け: {:.3f}秒 ({:.1f}%)".format(mapping_time, percent(mapping_time)))
+    print("Viterbi: {:.3f}秒 ({:.1f}%)".format(Viterbi_time, percent(Viterbi_time)))
+    print("経路計算: {:.3f}秒 ({:.1f}%)".format(route_time, percent(route_time)))
+    print("移動先までの経路: {:.3f}秒 ({:.1f}%)".format(move_time, percent(move_time)))
+    print("全体: {:.3f}秒 (100.0%)".format(total))
+    print("-------------------")
 
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
 #バス停問題
@@ -1262,9 +1245,8 @@ def path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(st, en, points, sp):
     percent = (node_count / full_search_steps) * 100
     return ret_path, path_len, percent, best['path']
 #########################################################################################
-import heapq
 import itertools
-import networkx as nx
+import heapq
 
 class Routing:
     def __init__(self, sp):
@@ -1302,12 +1284,13 @@ class Routing:
         users_start = [q[0] for q in Q_id]
         users_end   = [q[1] for q in Q_id]
 
+        LARGE_COST = 10**9  # 例: 普通の徒歩/車両コストよりずっと大きい値
         for source in endpoints:
             for target in all_ids:
                 s_str, t_str = self.id2node_fn(source), self.id2node_fn(target)
                 dist = self.sp.len_SP(s_str, t_str)
                 if (source in users_start or source in users_end) and dist > R1:
-                    SPC_cache[(source, target)] = float('inf')
+                    SPC_cache[(source, target)] = LARGE_COST
                 else:
                     SPC_cache[(source, target)] = dist
 
@@ -1406,16 +1389,14 @@ class Routing:
                         cd = tcost
             cost_si_v = SPC_cache.get((si, v), float('inf'))
             cost_di_v = SPC_cache.get((di, v), float('inf'))
+            # 到達不可能な場合だけスキップ。単なる「徒歩遠い」場合(LN)はそのまま評価
             if cost_si_v == float('inf') or cost_di_v == float('inf'):
-                T_temp_v.add((si, float('inf')))
-                T_temp_v.add((di, float('inf')))
+                # 到達不能な頂点は短絡してよい
                 continue
 
             min_cd_cdi = min(cd if cd is not None else float('inf'), cost_di_v)
 
             if cs is not None and cd is not None and (cs + min_cd_cdi) < (cost_si_v + cost_di_v):
-                if cs == float('inf') or min_cd_cdi == float('inf'):
-                    return d, pie, T, PQ
                 d_temp_v += cs + min_cd_cdi
                 T_temp_v.add((si, cs))
                 T_temp_v.add((di, min_cd_cdi))
@@ -1433,123 +1414,99 @@ class Routing:
         return d, pie, T, PQ
 
     def vehicle_stops(self, st, en, pie, Q, SPC_cache, R1=float('inf')):
-        def insert_best_node_into_path(G, path, node):
-            min_total = float('inf')
-            best_path = None
-            # 挿入位置は始点直後から終点直前まで（始点・終点固定）
-            for i in range(1, len(path)):
-                candidate = path[:i] + [node] + path[i:]
-                try:
-                    total = 0
-                    for k in range(len(candidate)-1):
-                        u_str = self.id2node_fn(candidate[k])
-                        v_str = self.id2node_fn(candidate[k+1])
-                        total += nx.dijkstra_path_length(G, u_str, v_str)
-                    if total < min_total:
-                        min_total = total
-                        best_path = candidate
-                except nx.NetworkXNoPath:
-                    continue
-            return best_path if best_path is not None else path
+        """
+        論文中の Algorithm 4 の VEHICLE-STOPS(st, en, π, T) に相当する処理。
+        - st: 車両経路の始点ノードID
+        - en: 車両経路の終点ノードID
+        - pie: shortest-path tree の親ポインタ辞書: node -> parent node
+        - Q: 需要のリスト [(si, di), ...]
+        - SPC_cache: (query_node, graph_node) -> 距離 のキャッシュ
+        - R1: クエリノードから車両ルート上ノードまでの許容距離しきい値
+        """
 
+        # ---- (1) st→en の車両ルート VP を parent 配列から復元 ----
         if st not in self.id2node or en not in self.id2node:
             return []
-        path_list = []
+
+        route_nodes = []        # VP: st→en の全ノード
         current = en
         while current is not None:
-            path_list.append(current)
+            route_nodes.append(current)
             if current == st:
                 break
             current = pie.get(current)
-        path_list.reverse()
-        if not path_list or path_list[0] != st or path_list[-1] != en:
+        route_nodes.reverse()
+
+        if not route_nodes or route_nodes[0] != st or route_nodes[-1] != en:
+            # 有効な st→en パスが復元できなければ空
             return []
 
-# --- 不到達ノードをパスに挿入 ---
-        while True:
-            best_delta = float('inf')
-            best_node = None
-            best_new_path = None
-            for si, di in Q:
-                # si探索
-                found_si = any(SPC_cache.get((si, v), float('inf')) <= R1 for v in path_list)
-                if not found_si:
-                    reachable_nodes = [
-                        n for n in self.id2node
-                        if SPC_cache.get((si, n), float('inf')) <= R1 and n not in path_list
-                    ]
-                    for n in reachable_nodes:
-                        cand_path = insert_best_node_into_path(self.G, path_list, n)
-                        # 経路長比較
-                        try:
-                            total = 0
-                            for k in range(len(cand_path)-1):
-                                u_str = self.id2node_fn(cand_path[k])
-                                v_str = self.id2node_fn(cand_path[k+1])
-                                total += nx.dijkstra_path_length(self.G, u_str, v_str)
-                        except nx.NetworkXNoPath:
-                            continue
-                        if total < best_delta:
-                            best_delta = total
-                            best_node = n
-                            best_new_path = cand_path
-                # di探索（同様に）
-                found_di = any(SPC_cache.get((di, v), float('inf')) <= R1 for v in path_list)
-                if not found_di:
-                    reachable_nodes = [
-                        n for n in self.id2node
-                        if SPC_cache.get((di, n), float('inf')) <= R1 and n not in path_list
-                    ]
-                    for n in reachable_nodes:
-                        cand_path = self.insert_best_node_into_path(self.G, path_list, n)
-                        try:
-                            total = 0
-                            for k in range(len(cand_path)-1):
-                                u_str = self.id2node_fn(cand_path[k])
-                                v_str = self.id2node_fn(cand_path[k+1])
-                                total += nx.dijkstra_path_length(self.G, u_str, v_str)
-                        except nx.NetworkXNoPath:
-                            continue
-                        if total < best_delta:
-                            best_delta = total
-                            best_node = n
-                            best_new_path = cand_path
-            # 挿入すべき候補ノードが見つからなければ終了
-            if best_node is None:
-                break
-            # 見つかったノードをパスに反映
-            path_list = best_new_path
+        # 論文中では: "Let VP be the set of nodes in the vehicle’s route from st to en"
+        VP = route_nodes
 
-        path_node_to_index = {node: idx for idx, node in enumerate(path_list)}
-        stop_points = {node: False for node in path_list}
+        # ---- (2) 各ノードを「停車するかどうか」のフラグで管理 ----
+        # 論文中: "stop(a) ← True, stop(b) ← True"
+        stop = {v: False for v in VP}
+
+        # ---- (3) 各クエリ (si, di) について VP 上の最寄りノード a, b を求めて stop を立てる ----
         for si, di in Q:
-            min_dist_si = float('inf'); nearest_si = None
-            min_dist_di = float('inf'); nearest_di = None
-            for vp_node in path_list:
-                d_si = SPC_cache.get((si, vp_node), float('inf'))
-                if d_si > R1: continue
-                if d_si < min_dist_si:
-                    min_dist_si = d_si
-                    nearest_si = vp_node
-                elif d_si == min_dist_si:
-                    if path_node_to_index[vp_node] < path_node_to_index.get(nearest_si, 1e9):
-                        nearest_si = vp_node
-                d_di = SPC_cache.get((di, vp_node), float('inf'))
-                if d_di > R1: continue
-                if d_di < min_dist_di:
-                    min_dist_di = d_di
-                    nearest_di = vp_node
-                elif d_di == min_dist_di:
-                    if path_node_to_index[vp_node] < path_node_to_index.get(nearest_di, 1e9):
-                        nearest_di = vp_node
-            if nearest_si is not None: stop_points[nearest_si] = True
-            if nearest_di is not None: stop_points[nearest_di] = True
+            # si に対する最近接ノード a を VP 上から探す
+            min_dist_si = float('inf')
+            a = None
+            # di に対する最近接ノード b を VP 上から探す
+            min_dist_di = float('inf')
+            b = None
 
-        stops_path = []
-        for node in path_list:
-            if node == st or node == en or stop_points[node]:
-                stops_path.append(node)
-        return stops_path
+            for v in VP:
+                # si -> v の距離
+                d_si_v = SPC_cache.get((si, v), float('inf'))
+                if d_si_v <= R1:
+                    # 「最短距離」で比較。距離が等しければ、st により近いノードをとる（論文の tie-break に相当）
+                    if d_si_v < min_dist_si:
+                        min_dist_si = d_si_v
+                        a = v
+                    elif d_si_v == min_dist_si and a is not None:
+                        # tie: st からの距離（= VP 上でのインデックス）で比較
+                        if VP.index(v) < VP.index(a):
+                            a = v
+
+                # di -> v の距離
+                d_di_v = SPC_cache.get((di, v), float('inf'))
+                if d_di_v <= R1:
+                    if d_di_v < min_dist_di:
+                        min_dist_di = d_di_v
+                        b = v
+                    elif d_di_v == min_dist_di and b is not None:
+                        if VP.index(v) < VP.index(b):
+                            b = v
+
+            # 最近接ノード a, b を停車ノードに指定（論文 4.52 行）
+            if a is not None:
+                stop[a] = True
+            if b is not None:
+                stop[b] = True
+
+        # ---- (4) en から π を逆にたどりながら stop==True のノードだけを P に詰める ----
+        # 論文 4.53–4.58 行:
+        #  P ← [en], v ← π(en)
+        #  while v ≠ st:
+        #     if stop(v) = True: P ← [v] + P
+        #     v ← π(v)
+        #  P ← [st] + P
+        #  return P
+        P = [en]
+        v = pie.get(en)
+
+        while v is not None and v != st:
+            if stop.get(v, False):
+                P.insert(0, v)   # 先頭に挿入
+            v = pie.get(v)
+
+        # st を先頭に追加
+        if st not in P:
+            P.insert(0, st)
+
+        return P
     
 class RoutingOptimal:
     def __init__(self, sp):

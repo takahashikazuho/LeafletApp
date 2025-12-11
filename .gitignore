@@ -3,3 +3,4 @@ data.csv
 cache/*
 paths.db
 graph.pkl
+*.pkl
