@@ -558,6 +558,87 @@ def set_cover(nodes, moveDist, sp):
 
     return points, points_set, cover_sets
 
+from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
+from ortools.constraint_solver import pywrapcp, routing_enums_pb2
+
+def solve_shp_with_ortools(st, en, nodes, sp, time_limit_sec=10):
+    """
+    st: 始点ノードID
+    en: 終点ノードID
+    nodes: 中間で必ず1回通るノードIDのリスト（st, enは含まない）
+    """
+
+    # OR-Tools用にノードリストを作る
+    all_nodes = [st] + nodes + [en]           # index 0 が st, 最後が en
+    n = len(all_nodes)
+
+    # 距離行列
+    dist_matrix = [[0] * n for _ in range(n)]
+    for i, u in enumerate(all_nodes):
+        for j, v in enumerate(all_nodes):
+            if i == j:
+                dist_matrix[i][j] = 0
+            else:
+                # sp が dict の場合
+                dist_matrix[i][j] = sp.len_SP(u, v)
+                # sp が関数なら: dist_matrix[i][j] = sp(u, v)
+
+    # RoutingIndexManager: 1台の車両, start, end をそれぞれ指定
+    start_index = 0
+    end_index = n - 1
+    # ★ここを修正：starts/ends をリストで渡す
+    manager = pywrapcp.RoutingIndexManager(
+        n,              # ノード数
+        1,              # 車両数
+        [start_index],  # starts
+        [end_index],    # ends
+    )
+
+    routing = pywrapcp.RoutingModel(manager)
+
+    # 距離コールバック
+    def distance_callback(from_index, to_index):
+        from_node = manager.IndexToNode(from_index)
+        to_node = manager.IndexToNode(to_index)
+        return int(dist_matrix[from_node][to_node])
+
+    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+
+    # 検索パラメータ設定
+    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+    search_parameters.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+    )
+    search_parameters.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+    )
+
+    # --- ここで小数秒を time_limit にセットする ---
+    sec = int(time_limit_sec)  # 整数部分
+    nanos = int((time_limit_sec - sec) * 1e9)  # 小数部分をナノ秒に
+    search_parameters.time_limit.seconds = sec
+    search_parameters.time_limit.nanos = nanos
+    # ---------------------------------------------
+
+    solution = routing.SolveWithParameters(search_parameters)
+    if solution is None:
+        return None  # 経路が見つからない場合
+
+    # 経路を復元（all_nodes のインデックス列）
+    index = routing.Start(0)
+    path_idx = []
+    while not routing.IsEnd(index):
+        node = manager.IndexToNode(index)
+        path_idx.append(node)
+        index = solution.Value(routing.NextVar(index))
+    path_idx.append(manager.IndexToNode(index))  # end_index
+
+    # インデックス列 -> 元のノードID列 (st→...→en)
+    shp = [all_nodes[i] for i in path_idx]
+    return shp
+
 def new_BusRouting(st, en, points, sp, moveDist):
     import time
     
@@ -574,8 +655,9 @@ def new_BusRouting(st, en, points, sp, moveDist):
         nodes.append(ns[0])
 
     # SHPを解く
+    limit = (len(nodes)+2)*(len(nodes)+2) * 0.0005
     t3 = time.time()
-    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, nodes, sp)
+    shp = solve_shp_with_ortools(st, en, nodes, sp, time_limit_sec=limit)
     t4 = time.time()
 
     # 対応付け
