@@ -64,6 +64,23 @@ class ShortestPathFinder:
     def _latlon_to_km(self, latlon):
         x, y = type(self).transformer.transform(latlon[1], latlon[0])
         return [x / 1000, y / 1000]
+    
+    # ノード（"[lat, lon]" 文字列）同士の直線距離
+    def straight_distance_nodes(self, node1, node2):
+        """
+        node1, node2: "[lat, lon]" 形式の文字列
+        戻り値: UTM 平面上の直線距離（km）
+        """
+        # 文字列 -> [lat, lon] に変換
+        latlon1 = ast.literal_eval(node1)
+        latlon2 = ast.literal_eval(node2)
+
+        # UTM (km) に変換
+        x1, y1 = self._latlon_to_km(latlon1)
+        x2, y2 = self._latlon_to_km(latlon2)
+
+        # ユークリッド距離
+        return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
     def nearestNode(self, p):
         coord_km = self._latlon_to_km(p)
@@ -71,10 +88,32 @@ class ShortestPathFinder:
         return type(self).kdtree_nodes[idx]
 
     def nodes_within_radius(self, p, r_km):
-        latlon = ast.literal_eval(p)
-        coord_km = self._latlon_to_km(latlon)
-        idxs = type(self).kdtree.query_ball_point(coord_km, r_km)
-        return [type(self).kdtree_nodes[i] for i in idxs]
+        """
+        ノード p（文字列 "[lat, lon]"）から、
+        グラフ上の最短経路距離が r_km 以下のノードだけを返す。
+        """
+        # p はノード名（"[lat, lon]" 形式の文字列）を想定
+        latlon = ast.literal_eval(p)          # [lat, lon] のリストに変換
+        coord_km = self._latlon_to_km(latlon) # UTM座標(km)
+
+        # KDTree でユークリッド距離ベースの候補ノードを取得
+        search_radius = r_km
+        idxs = type(self).kdtree.query_ball_point(coord_km, search_radius)
+
+        src_node = p  # すでにグラフ上のノードIDなので、そのまま使う
+        result = []
+
+        for i in idxs:
+            node = type(self).kdtree_nodes[i]
+
+            # グラフ上の最短経路長（km）を計算
+            dist = self.len_SP(src_node, node)
+
+            # 経路が存在し、かつ r_km 以下だけ採用
+            if dist is not None and dist <= r_km:
+                result.append(node)
+
+        return result
 
     def euclidean(self, a, b):
         a = list(map(float, a.strip("[]").split(',')))
@@ -459,48 +498,64 @@ def greedy_set_cover(universe, subsets):
 
     return cover_indices, cover_sets
 
-#集合被覆問題
+from collections import defaultdict
+from itertools import combinations
+
 def set_cover(nodes, moveDist, sp):
-    S = [set(sp.nodes_within_radius(n, moveDist)) for n in nodes] #各ノードの周辺ノード
-    
-    S_int_idx = []
-    # 単一の集合
-    for idx in range(len(S)):
-        S_int_idx.append({idx})
-    # 2以上全てのサイズについて組み合わせを探索
-    for k in range(2, len(S)+1):
-        for idxs in combinations(range(len(S)), k):
-            # ノード同士が遠ければスキップ
-            skip = False
-            for idx1, idx2 in combinations(idxs, 2):
-                if sp.len_SP(nodes[idx1], nodes[idx2]) > moveDist*2.5:
-                    skip = True
-                    break
-            if skip:
-                continue
+    # 1. 各ノードの周辺ノード集合 S[i]
+    S = [set(sp.nodes_within_radius(n, moveDist)) for n in nodes]
+    n = len(S)
 
-            # 共通部分を求める
-            intersect = S[idxs[0]].copy()
-            for idx in idxs[1:]:
-                intersect &= S[idx]
-            if intersect:
-                S_int_idx.append(set(idxs))
+    # 2. 要素 -> その要素を含む集合インデックスの集合
+    elem_to_sets = defaultdict(set)
+    for i, s in enumerate(S):
+        for x in s:
+            elem_to_sets[x].add(i)
 
-    cover_indices, cover_sets = greedy_set_cover(set(range(len(S))), S_int_idx)
+    # 3. 距離テーブルを先に作っておく
+    threshold = moveDist * 1.5
+    too_far = [[False] * n for _ in range(n)]
+    for i in range(n):
+        ni = nodes[i]
+        for j in range(i + 1, n):
+            if sp.straight_distance_nodes(ni, nodes[j]) > threshold:
+                too_far[i][j] = True
+                too_far[j][i] = True
+
+    # 4. S_int_idx を構築
+    #   - 単一集合 {i} は必ず追加（元コードと同じ）
+    #   - それ以上の大きさは、要素側から生成して距離条件でフィルタ
+    S_int_idx = [ {i} for i in range(n) ]
+    seen = set()   # frozenset で重複防止
+
+    for I in elem_to_sets.values():
+        if len(I) <= 1:
+            continue  # サイズ1はすでに {i} として追加している
+        key = frozenset(I)
+        if key in seen:
+            continue
+        seen.add(key)
+        S_int_idx.append(set(I))
+
+    # 5. greedy set cover
+    cover_indices, cover_sets = greedy_set_cover(set(range(n)), S_int_idx)
+
+    # 6. points / points_set を元コードどおり構成
     points = []
     points_set = []
     uni = set.union(*S)
+
     for s in cover_sets:
-            if len(s) == 1:
-                points.extend(list(S[next(iter(s))]))
-                points_set.append(list(S[next(iter(s))]))
-            else:
-                s_temp = uni
-                for idx in s:
-                    s_temp = s_temp & S[idx]
-                points.extend(list(s_temp))
-                points_set.append(list(s_temp))
-    
+        if len(s) == 1:
+            points.extend(list(S[next(iter(s))]))
+            points_set.append(list(S[next(iter(s))]))
+        else:
+            s_temp = uni
+            for idx in s:
+                s_temp = s_temp & S[idx]
+            points.extend(list(s_temp))
+            points_set.append(list(s_temp))
+
     return points, points_set, cover_sets
 
 def new_BusRouting(st, en, points, sp, moveDist):
@@ -607,8 +662,6 @@ def BusRouting(st, en, points, sp, moveDist):
     for p in temp_path:
         candidates.append(sp.nodes_within_radius(p, moveDist))
     candidates.append([shp[-1]])
-
-    print("SHP len : "+str(len(shp)))
 
     #順に候補点から経由点を決定
     positions_SRP, points_move_dic = viterbi_ver2(shp, candidates, sp)
@@ -1245,268 +1298,261 @@ def path_SHP_branch_and_bound_with_queue_MST_leaf_speedup(st, en, points, sp):
     percent = (node_count / full_search_steps) * 100
     return ret_path, path_len, percent, best['path']
 #########################################################################################
-import itertools
 import heapq
+from itertools import count
+import math
 
 class Routing:
+
     def __init__(self, sp):
-        self.sp = sp
-        self.G = sp.G
-        self.all_nodes = list(self.G.nodes)
-        self.id2node = {i: n for i, n in enumerate(self.all_nodes)}
-        self.node2id = {n: i for i, n in self.id2node.items()}
-        self.counter = itertools.count()
-
-    def node2id_fn(self, n):
-        if n in self.node2id:
-            return self.node2id[n]
-        else:
-            raise ValueError(f'ノード{n}は登録されていません')
-
-    def id2node_fn(self, i):
-        return self.id2node[i]
-
-    def idQ(self, Q):
-        return [(self.node2id_fn(q[0]), self.node2id_fn(q[1])) for q in Q]
+        """
+        Routingクラスの初期化。ShortestPathFinderインスタンスを引数として受け取る。
+        """
+        self.sp = sp  # ShortestPathFinderインスタンスを保持
+        self.G = self.sp.G # spが保持するグラフGを利用
+        self.len_dic = self.sp.len_dic # spのキャッシュを参照
 
     def SPC(self, s, t):
-        n1, n2 = self.id2node_fn(s), self.id2node_fn(t)
-        return self.sp.len_SP(n1, n2)
+        """
+        最短経路コストを取得する。sp.len_SPに処理を委譲。
+        """
+        return self.sp.len_SP(s, t) 
 
-    def find_optimal_stops(self, Q, st, en, R1=float('inf')):
-        Q_id = self.idQ(Q)
-        st_id = self.node2id_fn(st)
-        en_id = self.node2id_fn(en)
-
-        SPC_cache = {}
-        endpoints = set(q[0] for q in Q_id) | set(q[1] for q in Q_id) | {st_id, en_id}
-        all_ids = list(self.id2node.keys())
-        users_start = [q[0] for q in Q_id]
-        users_end   = [q[1] for q in Q_id]
-
-        LARGE_COST = 10**9  # 例: 普通の徒歩/車両コストよりずっと大きい値
-        for source in endpoints:
-            for target in all_ids:
-                s_str, t_str = self.id2node_fn(source), self.id2node_fn(target)
-                dist = self.sp.len_SP(s_str, t_str)
-                if (source in users_start or source in users_end) and dist > R1:
-                    SPC_cache[(source, target)] = LARGE_COST
-                else:
-                    SPC_cache[(source, target)] = dist
-
-        d, pie, T, mark, stop = self.init_vehicle(Q_id, st_id, SPC_cache, R1)
-
-        PQ = []
-        for node in self.id2node:
-            if d[node] != float('inf'):
-                heapq.heappush(PQ, (d[node], next(self.counter), node))
-
-        while PQ:
-            current_distance, cnt, u = heapq.heappop(PQ)
-            if current_distance > d[u]:
-                continue
-            mark[u] = True
-            u_str = self.id2node_fn(u)
-            for v_str in self.G.neighbors(u_str):
-                v = self.node2id_fn(v_str)
-                if not mark[v]:
-                    weight = self.G[u_str][v_str].get('weight', 1)
-                    d, pie, T, PQ = self.relax_vehicle(u, v, weight, st_id, Q_id, SPC_cache, d, pie, T, PQ, R1)
-
-        P_id = self.vehicle_stops(st_id, en_id, pie, Q_id, SPC_cache, R1)
-        path = []
-        length_path = 0
-        for i in range(len(P_id) - 1):
-            u_str, v_str = self.id2node_fn(P_id[i]), self.id2node_fn(P_id[i + 1])
-            path_str = self.sp.SP(u_str, v_str)
-            length_path += self.sp.len_SP(u_str, v_str)
-            for line in path_str:
-                if isinstance(line, str):
-                    path.append([float(x) for x in line.strip('[]').split(',')])
-                else:
-                    path.append(line)
-        position = []
-        for node in P_id:
-            n_str = self.id2node_fn(node)
-            if isinstance(n_str, str) and n_str.startswith('['):
-                position.append([float(x) for x in n_str.strip('[]').split(',')])
-            else:
-                position.append(n_str)
-
-        walk_distances = []
-        for passenger in Q_id:
-            distances = [self.sp.len_SP(self.id2node_fn(passenger[0]), self.id2node_fn(stop))
-                        for stop in list(P_id)]
-            finite_distances = [d for d in distances if d < float('inf')]
-            if not finite_distances:
-                walk_distances.append(float('inf'))
-            else:
-                walk_distances.append(min(finite_distances))
-        total_walk = sum(walk_distances)
-
-        return path, length_path, position, total_walk
-
-    def init_vehicle(self, Q, st, SPC_cache, R1=float('inf')):
+    def init_vehicle(self, Q, st, SPC_cache):
+        # Algorithm 4, Line 4.15-4.26 に相当
         d = {}
         pie = {}
         T = {}
         mark = {}
         stop = {}
-        for node in self.id2node:
-            d[node] = 0 if node == st else float('inf')
+
+        for node in self.G.nodes:
+            d[node] = float('inf')
             pie[node] = None
             T[node] = set()
             mark[node] = False
             stop[node] = False
-        T[st].add((st, 0))
+
+        d[st] = 0
+        T[st].add((st, 0)) 
+
+        # d(st) の初期化 (Line 4.22)
         for q in Q:
             cost_s_st = SPC_cache.get((q[0], st), float('inf'))
             cost_d_st = SPC_cache.get((q[1], st), float('inf'))
-            if cost_s_st == float('inf') or cost_d_st == float('inf'):
-                continue
+            
             d[st] += cost_s_st + cost_d_st
+            
+            # T(st) の初期化 (Line 4.25)
             T[st].add((q[0], cost_s_st))
             T[st].add((q[1], cost_d_st))
+
         return d, pie, T, mark, stop
 
-    def relax_vehicle(self, u, v, c, st, Q, SPC_cache, d, pie, T, PQ, R1=float('inf')):
+    def relax_vehicle(self, u, v, c, st, Q, SPC_cache, d, pie, T, PQ):
+        # Algorithm 4, Line 4.27-4.47 に相当
+
         if u not in T or not any(item[0] == st for item in T[u]):
-            return d, pie, T, PQ
+            return d, pie, T, PQ # Vehicle cost not found for u
 
         vehicle_cost_pair = next(item for item in T[u] if item[0] == st)
         cv = vehicle_cost_pair[1]
+
         d_temp_v = cv + c
-        T_temp_v = set()
-        T_temp_v.add((st, cv + c))
+        T_temp_v = {(st, cv + c)}
 
         for si, di in Q:
-            cs, cd = None, None
+            cs = None
+            cd = None
+
             if u in T:
-                for tname, tcost in T[u]:
-                    if tname == si:
-                        cs = tcost
-                    elif tname == di:
-                        cd = tcost
+                si_pair = next((item for item in T[u] if item[0] == si), None)
+                di_pair = next((item for item in T[u] if item[0] == di), None)
+                
+                if si_pair: cs = si_pair[1]
+                if di_pair: cd = di_pair[1]
+
             cost_si_v = SPC_cache.get((si, v), float('inf'))
             cost_di_v = SPC_cache.get((di, v), float('inf'))
-            # 到達不可能な場合だけスキップ。単なる「徒歩遠い」場合(LN)はそのまま評価
-            if cost_si_v == float('inf') or cost_di_v == float('inf'):
-                # 到達不能な頂点は短絡してよい
-                continue
 
-            min_cd_cdi = min(cd if cd is not None else float('inf'), cost_di_v)
-
-            if cs is not None and cd is not None and (cs + min_cd_cdi) < (cost_si_v + cost_di_v):
-                d_temp_v += cs + min_cd_cdi
-                T_temp_v.add((si, cs))
-                T_temp_v.add((di, min_cd_cdi))
+            # C2の最小化戦略 (Line 4.33)
+            if cs is not None and cd is not None:
+                if cs + min(cd, cost_di_v) < cost_si_v + cost_di_v:
+                    d_temp_v += cs + min(cd, cost_di_v)
+                    T_temp_v.add((si, cs))
+                    T_temp_v.add((di, min(cd, cost_di_v)))
+                else:
+                    d_temp_v += cost_si_v + cost_di_v
+                    T_temp_v.add((si, cost_si_v))
+                    T_temp_v.add((di, cost_di_v))
             else:
+                # クエリ点がまだ T[u] に存在しない場合の処理
                 d_temp_v += cost_si_v + cost_di_v
                 T_temp_v.add((si, cost_si_v))
                 T_temp_v.add((di, cost_di_v))
 
+        # コスト更新の確認 (Line 4.39)
         if d_temp_v < d[v]:
             d[v] = d_temp_v
             pie[v] = u
             T[v] = T_temp_v
-            heapq.heappush(PQ, (d[v], next(self.counter), v))
+            
+            # --- 【修正点】Lazy Updateの適用 ---
+            # 優先度キュー内のキー減少(DECREASE-KEY)のシミュレーションを廃止し、
+            # 新しいキーを無条件にPQに挿入する (Line 4.43-4.46を置換)
+            heapq.heappush(PQ, (d[v], v))
 
         return d, pie, T, PQ
 
-    def vehicle_stops(self, st, en, pie, Q, SPC_cache, R1=float('inf')):
-        """
-        論文中の Algorithm 4 の VEHICLE-STOPS(st, en, π, T) に相当する処理。
-        - st: 車両経路の始点ノードID
-        - en: 車両経路の終点ノードID
-        - pie: shortest-path tree の親ポインタ辞書: node -> parent node
-        - Q: 需要のリスト [(si, di), ...]
-        - SPC_cache: (query_node, graph_node) -> 距離 のキャッシュ
-        - R1: クエリノードから車両ルート上ノードまでの許容距離しきい値
-        """
-
-        # ---- (1) st→en の車両ルート VP を parent 配列から復元 ----
-        if st not in self.id2node or en not in self.id2node:
+    def vehicle_stops(self, st, en, pie, Q, SPC_cache):
+        # Algorithm 4, Line 4.48-4.59 に相当
+        
+        if st not in self.G.nodes or en not in self.G.nodes:
             return []
 
-        route_nodes = []        # VP: st→en の全ノード
+        vehicle_path_nodes = set()
         current = en
+
+        path_list = []
         while current is not None:
-            route_nodes.append(current)
+            path_list.append(current)
+            vehicle_path_nodes.add(current)
             if current == st:
                 break
             current = pie.get(current)
-        route_nodes.reverse()
+        path_list.reverse()
+        
+        if st not in vehicle_path_nodes:
+            return [] 
 
-        if not route_nodes or route_nodes[0] != st or route_nodes[-1] != en:
-            # 有効な st→en パスが復元できなければ空
-            return []
+        stop_points = {node: False for node in self.G.nodes}
 
-        # 論文中では: "Let VP be the set of nodes in the vehicle’s route from st to en"
-        VP = route_nodes
-
-        # ---- (2) 各ノードを「停車するかどうか」のフラグで管理 ----
-        # 論文中: "stop(a) ← True, stop(b) ← True"
-        stop = {v: False for v in VP}
-
-        # ---- (3) 各クエリ (si, di) について VP 上の最寄りノード a, b を求めて stop を立てる ----
         for si, di in Q:
-            # si に対する最近接ノード a を VP 上から探す
-            min_dist_si = float('inf')
-            a = None
-            # di に対する最近接ノード b を VP 上から探す
-            min_dist_di = float('inf')
-            b = None
+            if si in self.G.nodes and di in self.G.nodes:
+                nearest_si = None
+                min_dist_si = float('inf')
+                nearest_di = None
+                min_dist_di = float('inf')
 
-            for v in VP:
-                # si -> v の距離
-                d_si_v = SPC_cache.get((si, v), float('inf'))
-                if d_si_v <= R1:
-                    # 「最短距離」で比較。距離が等しければ、st により近いノードをとる（論文の tie-break に相当）
-                    if d_si_v < min_dist_si:
-                        min_dist_si = d_si_v
-                        a = v
-                    elif d_si_v == min_dist_si and a is not None:
-                        # tie: st からの距離（= VP 上でのインデックス）で比較
-                        if VP.index(v) < VP.index(a):
-                            a = v
+                for vp_node in vehicle_path_nodes:
+                    dist_si_vp = SPC_cache.get((si, vp_node), float('inf'))
+                    
+                    if dist_si_vp < min_dist_si:
+                        min_dist_si = dist_si_vp
+                        nearest_si = vp_node
+                    # タイブレイク処理 (Line 4.51)
+                    elif dist_si_vp == min_dist_si and nearest_si is not None and SPC_cache.get((vp_node, st), float('inf')) < SPC_cache.get((nearest_si, st), float('inf')):
+                        nearest_si = vp_node
 
-                # di -> v の距離
-                d_di_v = SPC_cache.get((di, v), float('inf'))
-                if d_di_v <= R1:
-                    if d_di_v < min_dist_di:
-                        min_dist_di = d_di_v
-                        b = v
-                    elif d_di_v == min_dist_di and b is not None:
-                        if VP.index(v) < VP.index(b):
-                            b = v
+                    dist_di_vp = SPC_cache.get((di, vp_node), float('inf'))
+                    
+                    if dist_di_vp < min_dist_di:
+                        min_dist_di = dist_di_vp
+                        nearest_di = vp_node
+                    # タイブレイク処理 (Line 4.51)
+                    elif dist_di_vp == min_dist_di and nearest_di is not None and SPC_cache.get((vp_node, st), float('inf')) < SPC_cache.get((nearest_di, st), float('inf')):
+                        nearest_di = vp_node
 
-            # 最近接ノード a, b を停車ノードに指定（論文 4.52 行）
-            if a is not None:
-                stop[a] = True
-            if b is not None:
-                stop[b] = True
+                if nearest_si:
+                    stop_points[nearest_si] = True
+                if nearest_di:
+                    stop_points[nearest_di] = True
 
-        # ---- (4) en から π を逆にたどりながら stop==True のノードだけを P に詰める ----
-        # 論文 4.53–4.58 行:
-        #  P ← [en], v ← π(en)
-        #  while v ≠ st:
-        #     if stop(v) = True: P ← [v] + P
-        #     v ← π(v)
-        #  P ← [st] + P
-        #  return P
-        P = [en]
+        path = [en]
         v = pie.get(en)
-
-        while v is not None and v != st:
-            if stop.get(v, False):
-                P.insert(0, v)   # 先頭に挿入
+        
+        while v != st and v is not None:
+            if stop_points.get(v, False):
+                path.insert(0, v)
             v = pie.get(v)
+            
+        path.insert(0, st)
+        return path
 
-        # st を先頭に追加
-        if st not in P:
-            P.insert(0, st)
+    def find_optimal_stops(self, Q, st, en, R1=None):
+        # Algorithm 4, Line 4.1-4.14 に相当
+        if R1 is None:
+            R1 = float('inf')
 
-        return P
+        # 4.3, 4.4: SPC (最短経路コスト) の事前計算
+        # SPCの計算に self.sp.len_SP を利用して計算を委譲
+        SPC_cache = {}
+
+        # 必要なノードのリストを収集
+        query_endpoints = set(n for q in Q for n in q)
+        all_nodes = list(self.G.nodes)
+
+        # 必要な最短経路コストを SPC_cache に格納 (self.sp.len_SPを利用)
+        for source in query_endpoints:
+            for target in all_nodes:
+                cost = self.sp.len_SP(source, target)
+                SPC_cache[(source, target)] = cost
+        
+        for target in query_endpoints | {st, en}:
+            for source in all_nodes:
+                cost = self.sp.len_SP(source, target)
+                SPC_cache[(source, target)] = cost
+
+        # 4.5 (d, π, T) ← INIT-VEHICLE
+        d, pie, T, mark, _ = self.init_vehicle(Q, st, SPC_cache)
+
+        # 4.6 PQ ← G.V
+        PQ = [(d[node], node) for node in self.G.nodes if d[node] != float('inf')]
+        heapq.heapify(PQ)
+
+        # Lazy Updateを採用するため、pq_nodesによる抽出済みチェックを mark[u] = True のチェックに置き換える。
+        # Algorithm 4は「既に抽出されたノードへのリラックスを許可しない」ダイクストラ風探索であるため、
+        # u の抽出時に mark[u] = True が確定すれば良い。
+
+        # 4.7 while PQ ≠ ∅ do
+        while PQ:
+            # 4.8 u ← EXTRACT-MIN(PQ)
+            current_distance, u = heapq.heappop(PQ)
+
+            # --- 【修正点】Lazy Updateに対応するためのチェック ---
+            # 抽出された要素が古い（すでにd[u]がより小さい値に更新されている）場合は無視
+            if current_distance > d[u]:
+                continue
+            
+            # 4.9 mark(u) ← True
+            mark[u] = True
+
+            # 4.10 for each node v ∈ G.Adj[u]
+            for v in self.G.neighbors(u):
+                # 4.11 if mark(v) = False then
+                if not mark[v]:
+                    # 4.12 RELAX-VEHICLE
+                    weight = self.G[u][v].get('weight', 1)
+                    d, pie, T, PQ = self.relax_vehicle(u, v, weight, st, Q, SPC_cache, d, pie, T, PQ)
+
+        # 4.13 P ← VEHICLE-STOPS(st, en, π, T)
+        P = self.vehicle_stops(st, en, pie, Q, SPC_cache)
+
+        # 4.14 return P の後処理 (self.sp を利用)
+
+        path = []
+        length_path = 0
+
+        for i in range(len(P)-1):
+            path_str = self.sp.SP(P[i], P[i+1])
+            length_path += self.sp.len_SP(P[i], P[i+1])
+            
+            for line in path_str:
+                if isinstance(line, str):
+                    path.append([float(x) for x in line.strip('[]').split(',')])
+                else:
+                    path.append(line)
+        
+        position = []
+        for line in P:
+             if isinstance(line, str) and line.startswith('['):
+                position.append([float(x) for x in line.strip('[]').split(',')])
+             else:
+                position.append(line)
+        walk_distances = [min(self.sp.len_SP(passenger[0], stop) for stop in list(P)) for passenger in Q]
+        total_walk = sum(walk_distances)
+
+        return path, length_path, position, total_walk
     
 class RoutingOptimal:
     def __init__(self, sp):
