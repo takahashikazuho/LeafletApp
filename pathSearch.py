@@ -25,15 +25,34 @@ from pyproj import Transformer
 from scipy.spatial import KDTree
 
 
+from collections import defaultdict
+from math import sqrt, floor, ceil
+import ast
+import networkx as nx
+from pyproj import Transformer
+
 class ShortestPathFinder:
     len_dic = defaultdict(dict)      # メモリキャッシュ：辞書の辞書
-    kdtree = None
-    kdtree_nodes = None
-    kdtree_coords_km = None
     transformer = None
     zone = None
 
-    def __init__(self, G, weight="weight", utm_zone=54, len_dic=defaultdict(dict)):
+    # グリッド関連（クラス変数）
+    grid = None                      # {(gx, gy): [node_index, ...]}
+    grid_cell_size_km = None
+    grid_nodes = None                # ノードIDのリスト
+    grid_coords_km = None            # [[x_km, y_km], ...]
+    grid_min_x = None
+    grid_min_y = None
+    grid_max_x = None
+    grid_max_y = None
+
+    def __init__(self, G, weight="weight", utm_zone=54,
+                 len_dic=defaultdict(dict),
+                 cell_size_km=0.2):
+        """
+        cell_size_km: グリッドのセルサイズ（km）
+                      半径探索でよく使う半径 r_km と同オーダーにするとよい
+        """
         self.G = G
         self.weight = weight
         self.zone = utm_zone
@@ -47,90 +66,199 @@ class ShortestPathFinder:
             type(self).transformer = Transformer.from_crs("epsg:4326", crs_utm, always_xy=True)
             type(self).zone = utm_zone
 
-        # KDTree初期化（ノードリストが変わったら再作成）
+        # グリッド初期化（ノードリストが変わったら再構築）
         nodes = list(G.nodes)
-        if (type(self).kdtree is None or
-            type(self).kdtree_nodes != nodes or
-            type(self).zone != utm_zone):
+        rebuild_grid = False
+
+        if type(self).grid is None:
+            rebuild_grid = True
+        elif type(self).grid_nodes != nodes:
+            rebuild_grid = True
+        elif type(self).zone != utm_zone:
+            rebuild_grid = True
+        elif type(self).grid_cell_size_km != cell_size_km:
+            # セルサイズを変えたら当然作り直す
+            rebuild_grid = True
+
+        if rebuild_grid:
             coords_km = []
+            xs, ys = [], []
             for node_str in nodes:
                 latlon = ast.literal_eval(node_str)  # [lat, lon]
                 x, y = type(self).transformer.transform(latlon[1], latlon[0])
-                coords_km.append([x / 1000, y / 1000])
-            type(self).kdtree = KDTree(coords_km)
-            type(self).kdtree_nodes = nodes
-            type(self).kdtree_coords_km = coords_km
+                x_km, y_km = x / 1000.0, y / 1000.0
+                coords_km.append([x_km, y_km])
+                xs.append(x_km)
+                ys.append(y_km)
 
+            # 全体の bbox
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+
+            # グリッド構造を作成
+            grid = defaultdict(list)
+            cs = cell_size_km
+
+            def to_grid_ix(x, y):
+                gx = int(floor((x - min_x) / cs))
+                gy = int(floor((y - min_y) / cs))
+                return gx, gy
+
+            for idx, (xk, yk) in enumerate(coords_km):
+                gx, gy = to_grid_ix(xk, yk)
+                grid[(gx, gy)].append(idx)
+
+            type(self).grid = grid
+            type(self).grid_cell_size_km = cell_size_km
+            type(self).grid_nodes = nodes
+            type(self).grid_coords_km = coords_km
+            type(self).grid_min_x = min_x
+            type(self).grid_min_y = min_y
+            type(self).grid_max_x = max_x
+            type(self).grid_max_y = max_y
+
+    # ===== 座標変換 =====
     def _latlon_to_km(self, latlon):
         x, y = type(self).transformer.transform(latlon[1], latlon[0])
-        return [x / 1000, y / 1000]
-    
-    # ノード（"[lat, lon]" 文字列）同士の直線距離
+        return [x / 1000.0, y / 1000.0]
+
+    # グリッド座標変換
+    def _km_to_grid_ix(self, x_km, y_km):
+        cs = type(self).grid_cell_size_km
+        gx = int(floor((x_km - type(self).grid_min_x) / cs))
+        gy = int(floor((y_km - type(self).grid_min_y) / cs))
+        return gx, gy
+
+    # ===== 直線距離（UTM上、km） =====
     def straight_distance_nodes(self, node1, node2):
-        """
-        node1, node2: "[lat, lon]" 形式の文字列
-        戻り値: UTM 平面上の直線距離（km）
-        """
-        # 文字列 -> [lat, lon] に変換
         latlon1 = ast.literal_eval(node1)
         latlon2 = ast.literal_eval(node2)
-
-        # UTM (km) に変換
         x1, y1 = self._latlon_to_km(latlon1)
         x2, y2 = self._latlon_to_km(latlon2)
-
-        # ユークリッド距離
         return sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
+    # ===== グリッド版 最近傍ノード =====
     def nearestNode(self, p):
+        """
+        p: [lat, lon] のリスト（これまでの呼び方そのまま）
+        戻り値: 最近傍ノードID（"[lat, lon]" 文字列）
+        """
         coord_km = self._latlon_to_km(p)
-        dist, idx = type(self).kdtree.query(coord_km)
-        return type(self).kdtree_nodes[idx]
+        xq, yq = coord_km
+        gx0, gy0 = self._km_to_grid_ix(xq, yq)
 
+        best_dist2 = float("inf")
+        best_idx = None
+
+        # 探索半径をセル単位で徐々に広げる
+        # （最大で全範囲をカバーするところまで。途中で十分近くなったら打ち切りも可）
+        cs = type(self).grid_cell_size_km
+
+        # 最悪ケースでは bbox 全域を探索するが、通常はかなり早く見つかる
+        max_range_x = int(ceil((type(self).grid_max_x - type(self).grid_min_x) / cs)) + 1
+        max_range_y = int(ceil((type(self).grid_max_y - type(self).grid_min_y) / cs)) + 1
+        max_r = max(max_range_x, max_range_y)
+
+        grid = type(self).grid
+        coords_km = type(self).grid_coords_km
+
+        for r in range(0, max_r):
+            found_in_this_ring = False
+
+            # gx in [gx0-r, gx0+r], gy in [gy0-r, gy0+r]
+            for gx in range(gx0 - r, gx0 + r + 1):
+                for gy in range(gy0 - r, gy0 + r + 1):
+                    cell = (gx, gy)
+                    if cell not in grid:
+                        continue
+                    for idx in grid[cell]:
+                        xk, yk = coords_km[idx]
+                        dx = xk - xq
+                        dy = yk - yq
+                        d2 = dx*dx + dy*dy
+                        if d2 < best_dist2:
+                            best_dist2 = d2
+                            best_idx = idx
+                            found_in_this_ring = True
+
+            # 1リング内で何か見つかったら、
+            # 「さらに外側のセルの中心までの距離」が best_dist より必ず大きいとは限らないが、
+            # 通常はかなり小さい範囲で十分なので、必要なら適当に r の上限を小さくしてもよい
+            if found_in_this_ring and r >= 2:
+                # 適度に打ち切る（チューニング次第）
+                break
+
+        if best_idx is None:
+            # ありえないはずだが、安全のため
+            return None
+        return type(self).grid_nodes[best_idx]
+
+    # ===== グリッド版 半径内ノード列挙 =====
     def nodes_within_radius(self, p, r_km):
         """
         ノード p（文字列 "[lat, lon]"）から、
         グラフ上の最短経路距離が r_km 以下のノードだけを返す。
         """
-        # p はノード名（"[lat, lon]" 形式の文字列）を想定
-        latlon = ast.literal_eval(p)          # [lat, lon] のリストに変換
-        coord_km = self._latlon_to_km(latlon) # UTM座標(km)
+        # p: "[lat, lon]" 文字列
+        latlon = ast.literal_eval(p)
+        coord_km = self._latlon_to_km(latlon)
+        xq, yq = coord_km
 
-        # KDTree でユークリッド距離ベースの候補ノードを取得
-        search_radius = r_km
-        idxs = type(self).kdtree.query_ball_point(coord_km, search_radius)
+        cs = type(self).grid_cell_size_km
 
-        src_node = p  # すでにグラフ上のノードIDなので、そのまま使う
+        # r_km をカバーするグリッド範囲
+        gx0, gy0 = self._km_to_grid_ix(xq, yq)
+        dr = int(ceil(r_km / cs))
+
+        grid = type(self).grid
+        coords_km = type(self).grid_coords_km
+        nodes = type(self).grid_nodes
+
+        src_node = p
         result = []
 
-        for i in idxs:
-            node = type(self).kdtree_nodes[i]
+        r2 = r_km * r_km  # ユークリッドの候補絞りにも使う
 
-            # グラフ上の最短経路長（km）を計算
-            dist = self.len_SP(src_node, node)
+        for gx in range(gx0 - dr, gx0 + dr + 1):
+            for gy in range(gy0 - dr, gy0 + dr + 1):
+                cell = (gx, gy)
+                if cell not in grid:
+                    continue
+                for idx in grid[cell]:
+                    xk, yk = coords_km[idx]
+                    dx = xk - xq
+                    dy = yk - yq
+                    d2 = dx*dx + dy*dy
 
-            # 経路が存在し、かつ r_km 以下だけ採用
-            if dist is not None and dist <= r_km:
-                result.append(node)
+                    # まずユークリッド距離で雑にフィルタ
+                    if d2 > r2:
+                        continue
+
+                    node = nodes[idx]
+
+                    # グラフ上の最短経路長（km）を計算
+                    dist = self.len_SP(src_node, node)
+
+                    # 経路が存在し、かつ r_km 以下だけ採用
+                    if dist is not None and dist <= r_km:
+                        result.append(node)
 
         return result
 
+    # ===== A* 用ユークリッドヒューリスティック（緯度経度距離） =====
     def euclidean(self, a, b):
         a = list(map(float, a.strip("[]").split(',')))
         b = list(map(float, b.strip("[]").split(',')))
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
+    # ===== 最短路長（キャッシュ付き） =====
     def len_SP(self, node1, node2):
-        # ノードペアを順序正規化（片方向のみ保存/検索, 無向グラフ想定）
         key1, key2 = min(str(node1), str(node2)), max(str(node1), str(node2))
-
-        # メモリキャッシュ
         try:
             return type(self).len_dic[key1][key2]
         except KeyError:
             pass
 
-        # 最短路計算
         try:
             dist = nx.astar_path_length(
                 self.G,
@@ -178,18 +306,6 @@ def aroundRectagleArea(y, x, r):
     x1, y1, _back1 = grs80.fwd(float(y), float(x), 135, d)
     x2, y2, _back2 = grs80.fwd(float(y), float(x), 315, d)
     return y1, x1, y2, x2
-
-#座標の最近傍ノードを取得
-def nearestNode(p, link):
-    dist = float('inf')
-    nearestNode = None
-    for line in link:
-        for point in line:
-            d = math.sqrt((p[0] - point[0])**2 + (p[1] - point[1])**2)
-            if d < dist:
-                dist = d
-                nearestNode = point
-    return nearestNode
 
 #Gを連結グラフにする
 import ast
@@ -499,7 +615,6 @@ def greedy_set_cover(universe, subsets):
     return cover_indices, cover_sets
 
 from collections import defaultdict
-from itertools import combinations
 
 def set_cover(nodes, moveDist, sp):
     # 1. 各ノードの周辺ノード集合 S[i]
@@ -557,8 +672,6 @@ def set_cover(nodes, moveDist, sp):
             points_set.append(list(s_temp))
 
     return points, points_set, cover_sets
-
-from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
@@ -655,7 +768,8 @@ def new_BusRouting(st, en, points, sp, moveDist):
         nodes.append(ns[0])
 
     # SHPを解く
-    limit = (len(nodes)+2)*(len(nodes)+2) * 0.0005
+    base_limit = (len(nodes)+2)**3 * 0.00002
+    limit = max(base_limit, 0.2) 
     t3 = time.time()
     shp = solve_shp_with_ortools(st, en, nodes, sp, time_limit_sec=limit)
     t4 = time.time()
@@ -709,27 +823,23 @@ def new_BusRouting(st, en, points, sp, moveDist):
 
     t12 = time.time()
 
-    print("--- 実行時間計測 ---")
-    total = time.time() - time0
+    # print("--- 実行時間計測 ---")
+    # total = t_vit2 - time0
 
-    set_cover_time = t2 - t1
-    SHP_time = t4 - t3
-    mapping_time = t6 - t5
-    Viterbi_time = t_vit2 - t_vit1
-    route_time = t10 - t9
-    move_time = t12 - t11
+    # set_cover_time = t2 - t1
+    # SHP_time = t4 - t3
+    # mapping_time = t6 - t5
+    # Viterbi_time = t_vit2 - t_vit1
 
-    def percent(val):
-        return (val/total)*100 if total > 0 else 0
+    # def percent(val):
+    #     return (val/total)*100 if total > 0 else 0
 
-    print("set_cover: {:.3f}秒 ({:.1f}%)".format(set_cover_time, percent(set_cover_time)))
-    print("SHP: {:.3f}秒 ({:.1f}%)".format(SHP_time, percent(SHP_time)))
-    print("対応付け: {:.3f}秒 ({:.1f}%)".format(mapping_time, percent(mapping_time)))
-    print("Viterbi: {:.3f}秒 ({:.1f}%)".format(Viterbi_time, percent(Viterbi_time)))
-    print("経路計算: {:.3f}秒 ({:.1f}%)".format(route_time, percent(route_time)))
-    print("移動先までの経路: {:.3f}秒 ({:.1f}%)".format(move_time, percent(move_time)))
-    print("全体: {:.3f}秒 (100.0%)".format(total))
-    print("-------------------")
+    # print("set_cover: {:.3f}秒 ({:.1f}%)".format(set_cover_time, percent(set_cover_time)))
+    # print("SHP: {:.3f}秒 ({:.1f}%)".format(SHP_time, percent(SHP_time)))
+    # print("対応付け: {:.3f}秒 ({:.1f}%)".format(mapping_time, percent(mapping_time)))
+    # print("Viterbi: {:.3f}秒 ({:.1f}%)".format(Viterbi_time, percent(Viterbi_time)))
+    # print("全体: {:.3f}秒 (100.0%)".format(total))
+    # print("-------------------")
 
     return path, length_SRP, positions_SRP_a, path_positions, len_walk
 #バス停問題
@@ -1454,8 +1564,8 @@ class Routing:
                 if si_pair: cs = si_pair[1]
                 if di_pair: cd = di_pair[1]
 
-            cost_si_v = SPC_cache.get((si, v), float('inf'))
-            cost_di_v = SPC_cache.get((di, v), float('inf'))
+            cost_si_v = SPC_cache.get((si, v), float('inf')) * 0.33
+            cost_di_v = SPC_cache.get((di, v), float('inf')) * 0.33
 
             # C2の最小化戦略 (Line 4.33)
             if cs is not None and cd is not None:
