@@ -1,0 +1,634 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>花札 こいこいスコア記録</title>
+<style>
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #111 url('https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Hanafuda_cards_back.svg/512px-Hanafuda_cards_back.svg.png') repeat;
+    background-size: 200px auto;
+    color: #f9f4e6;
+  }
+
+  .app-wrap {
+    max-width: 800px;
+    margin: 25px auto;
+    padding: 20px 24px 28px;
+    background: radial-gradient(circle at top, #3b0b13 0, #160408 55%, #050204 100%);
+    border-radius: 14px;
+    border: 2px solid #c01b33;
+    box-shadow: 0 0 16px rgba(0,0,0,0.7);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .app-wrap::before,
+  .app-wrap::after {
+    content: "✿";
+    position: absolute;
+    font-size: 110px;
+    color: rgba(255,255,255,0.06);
+    pointer-events: none;
+  }
+  .app-wrap::before {
+    top: -25px;
+    right: 10px;
+  }
+  .app-wrap::after {
+    bottom: -30px;
+    left: 20px;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: 1.6rem;
+    letter-spacing: 0.15em;
+    text-align: center;
+    color: #ffe9b3;
+    text-shadow: 0 0 5px rgba(0,0,0,0.7);
+    border-bottom: 1px solid rgba(255,233,179,0.4);
+    padding-bottom: 6px;
+  }
+
+  .sub-title {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #f7d6c5;
+    margin-bottom: 16px;
+  }
+
+  .control-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .player-name-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9rem;
+    color: #ffe6c6;
+  }
+
+  .player-name-input input {
+    width: 120px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid #f0e4d0;
+    background: rgba(0,0,0,0.4);
+    color: #ffe9c9;
+  }
+
+  .months-select-wrap {
+    font-size: 0.9rem;
+    color: #ffe6c6;
+  }
+
+  .months-select-wrap select {
+    margin-left: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid #f0e4d0;
+    background: rgba(0,0,0,0.4);
+    color: #ffe9c9;
+  }
+
+  .current-month {
+    font-size: 0.95rem;
+    color: #ffdd99;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .current-month span {
+    font-weight: bold;
+    font-size: 1.05rem;
+  }
+
+  .score-input-row {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin: 10px 0 12px;
+  }
+
+  .player-input-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 140px;
+  }
+
+  .player-label {
+    font-size: 0.9rem;
+    color: #ffe6c6;
+  }
+
+  /* 花札風スコアコントロール全体 */
+  .hana-score-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* 数値入力の標準↑↓を消す */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  /* 中央の数値欄 */
+  .hana-score-control .score-input {
+    width: 60px;
+    text-align: center;
+    font-size: 1.1rem;
+    padding: 4px 6px;
+    border-radius: 6px;
+    border: 1px solid #f0e4d0;
+    background: radial-gradient(circle at top, #2a1207 0, #120504 60%, #050203 100%);
+    color: #ffe9c9;
+    box-shadow: 0 0 4px rgba(0,0,0,0.8) inset;
+  }
+
+  /* 花札風ボタン共通 */
+  .hana-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    border: 1px solid #f0e4d0;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: #fffbea;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 0 4px rgba(0,0,0,0.9);
+    transition: transform 0.05s ease, box-shadow 0.05s ease, filter 0.1s ease;
+    position: relative;
+  }
+
+  /* ＋ボタン：赤い札 */
+  .hana-btn.plus-btn {
+    background: linear-gradient(135deg, #4b0000 0, #b00015 40%, #3c0000 100%);
+  }
+
+  /* －ボタン：黒い札 */
+  .hana-btn.minus-btn {
+    background: linear-gradient(135deg, #020003 0, #3d050a 40%, #020003 100%);
+  }
+
+  /* 押したときのへこみ表現 */
+  .hana-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 0 1px rgba(0,0,0,1);
+    filter: brightness(0.9);
+  }
+
+  /* ホバー時に少し光らせる */
+  .hana-btn:hover {
+    filter: brightness(1.1);
+  }
+
+  /* 小さい花札マークを右下に（飾り） */
+  .hana-btn::after {
+    content: "花";
+    position: absolute;
+    right: 2px;
+    bottom: 0;
+    font-size: 9px;
+    color: rgba(255,252,235,0.9);
+    text-shadow: 0 0 2px rgba(0,0,0,0.9);
+  }
+
+  .buttons-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  button.main-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #f0e4d0;
+    background: linear-gradient(135deg, #7c101c 0, #e6344b 40%, #4a050d 100%);
+    color: #fff9e9;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(0,0,0,0.7);
+    font-size: 0.9rem;
+  }
+
+  button.sub-btn {
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid #d8cbb0;
+    background: linear-gradient(135deg, #2c1e11 0, #5b4630 40%, #1b1209 100%);
+    color: #fff6e3;
+    font-size: 0.8rem;
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(0,0,0,0.7);
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 0.9rem;
+  }
+
+  thead {
+    background: rgba(0,0,0,0.5);
+  }
+
+  thead th {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255, 216, 160, 0.5);
+    color: #ffdd99;
+    font-weight: bold;
+  }
+
+  tbody td {
+    padding: 4px 6px;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  tbody tr:nth-child(even) {
+    background: rgba(0,0,0,0.25);
+  }
+
+  tfoot td {
+    font-weight: bold;
+    background: #3a1f09;
+    color: #ffdd99;
+  }
+
+  .total-label {
+    text-align: right;
+  }
+
+  /* 合計スコアを大きく表示 */
+  .total-board {
+    display: flex;
+    justify-content: space-around;
+    gap: 16px;
+    margin-top: 8px;
+    padding: 10px 8px;
+    background: radial-gradient(circle at top, #5b1b1b 0, #2b070a 60%, #120103 100%);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 216, 160, 0.5);
+    box-shadow: 0 0 10px rgba(0,0,0,0.7);
+  }
+
+  .total-player-box {
+    text-align: center;
+    min-width: 150px;
+  }
+
+  .total-player-name {
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    color: #ffe6c6;
+  }
+
+  .total-score {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #ffeb7f;
+    text-shadow: 0 0 6px rgba(0,0,0,0.8);
+  }
+
+  .total-caption {
+    font-size: 0.75rem;
+    color: #f7d6c5;
+    margin-top: 2px;
+  }
+
+  /* 勝者演出表示 */
+  #winnerDisplay {
+    margin: 22px 0 8px 0;
+    text-align: center;
+    font-size: 2.1rem;
+    font-weight: bold;
+    color: #ffda36;
+    text-shadow: 0 0 12px #ce304c, 0 0 1px #fff;
+    min-height: 2.5em;
+    letter-spacing: 0.1em;
+    transition: all .4s;
+  }
+  #winnerDisplay.draw {
+    color: #ffedbc;
+    text-shadow: 0 0 8px #03a9f4,0 0 1px #fff;
+  }
+</style>
+</head>
+<body>
+<div class="app-wrap">
+  <h1>花札 こいこいスコア記録</h1>
+  <div class="sub-title">対戦の点数を記録して、最終的な勝者を表示します</div>
+
+  <div class="control-row">
+    <div class="player-name-input">
+      プレイヤー1:
+      <input type="text" id="p1nameInput" placeholder="プレイヤー1">
+    </div>
+    <div class="player-name-input">
+      プレイヤー2:
+      <input type="text" id="p2nameInput" placeholder="プレイヤー2">
+    </div>
+    <div class="months-select-wrap">
+      対戦数:
+      <select id="monthsSelect">
+        <option value="3">3回戦</option>
+        <option value="6">6回戦</option>
+        <option value="12" selected>12回戦</option>
+        <option value="24">24回戦</option>
+      </select>
+      <span id="currentMonthInfo">（全12回戦）</span>
+    </div>
+  </div>
+
+  <div class="current-month">
+    第 <span id="currentMonth">1</span> 回目 / 全 <span id="totalMonths">12</span> 回
+  </div>
+
+  <div class="score-input-row">
+    <div class="player-input-block">
+      <div class="player-label" id="p1label">プレイヤー1の点数</div>
+      <div class="hana-score-control">
+        <button type="button" class="hana-btn minus-btn" data-target="p1score">－</button>
+        <input type="number" id="p1score" class="score-input" value="0" min="0" step="1">
+        <button type="button" class="hana-btn plus-btn" data-target="p1score">＋</button>
+      </div>
+    </div>
+    <div class="player-input-block">
+      <div class="player-label" id="p2label">プレイヤー2の点数</div>
+      <div class="hana-score-control">
+        <button type="button" class="hana-btn minus-btn" data-target="p2score">－</button>
+        <input type="number" id="p2score" class="score-input" value="0" min="0" step="1">
+        <button type="button" class="hana-btn plus-btn" data-target="p2score">＋</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="buttons-row">
+    <button id="addScoreBtn" class="main-btn">この回の点数を追加</button>
+    <button id="undoBtn" class="sub-btn">1つ戻す</button>
+    <button id="resetBtn" class="sub-btn">リセット</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:center;">回</th>
+        <th style="text-align:right;" id="p1th">プレイヤー1</th>
+        <th style="text-align:right;" id="p2th">プレイヤー2</th>
+      </tr>
+    </thead>
+    <tbody id="scoreBody">
+    </tbody>
+    <tfoot>
+      <tr>
+        <td class="total-label">合計</td>
+        <td id="totalP1">0</td>
+        <td id="totalP2">0</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="total-board">
+    <div class="total-player-box">
+      <div class="total-player-name" id="bigP1name">プレイヤー1</div>
+      <div class="total-score" id="bigTotalP1">0</div>
+      <div class="total-caption">現在の合計点</div>
+    </div>
+    <div class="total-player-box">
+      <div class="total-player-name" id="bigP2name">プレイヤー2</div>
+      <div class="total-score" id="bigTotalP2">0</div>
+      <div class="total-caption">現在の合計点</div>
+    </div>
+  </div>
+
+  <div id="winnerDisplay"></div>
+</div>
+
+<script>
+  let scores = [];
+  let currentMonth = 1;
+  let totalMonths = 12;
+
+  const p1input = document.getElementById('p1score');
+  const p2input = document.getElementById('p2score');
+  const addBtn = document.getElementById('addScoreBtn');
+  const undoBtn = document.getElementById('undoBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const scoreBody = document.getElementById('scoreBody');
+  const totalP1Cell = document.getElementById('totalP1');
+  const totalP2Cell = document.getElementById('totalP2');
+  const bigTotalP1 = document.getElementById('bigTotalP1');
+  const bigTotalP2 = document.getElementById('bigTotalP2');
+  const totalMonthsSpan = document.getElementById('totalMonths');
+  const currentMonthSpan = document.getElementById('currentMonth');
+  const currentMonthInfo = document.getElementById('currentMonthInfo');
+  const monthsSelect = document.getElementById('monthsSelect');
+  const winnerDisplay = document.getElementById('winnerDisplay');
+  const p1nameInput = document.getElementById('p1nameInput');
+  const p2nameInput = document.getElementById('p2nameInput');
+  const p1label = document.getElementById('p1label');
+  const p2label = document.getElementById('p2label');
+  const p1th = document.getElementById('p1th');
+  const p2th = document.getElementById('p2th');
+  const bigP1name = document.getElementById('bigP1name');
+  const bigP2name = document.getElementById('bigP2name');
+
+  function updatePlayerNames() {
+    const p1name = p1nameInput.value.trim() || 'プレイヤー1';
+    const p2name = p2nameInput.value.trim() || 'プレイヤー2';
+    p1label.textContent = `${p1name}の点数`;
+    p2label.textContent = `${p2name}の点数`;
+    p1th.textContent = p1name;
+    p2th.textContent = p2name;
+    bigP1name.textContent = p1name;
+    bigP2name.textContent = p2name;
+  }
+
+  function updateHeader() {
+    totalMonthsSpan.textContent = totalMonths;
+    currentMonthSpan.textContent = currentMonth;
+    currentMonthInfo.textContent = `（全${totalMonths}回戦）`;
+  }
+
+  function checkForWinner(sumP1, sumP2) {
+    if (scores.length < totalMonths) {
+      winnerDisplay.textContent = '';
+      winnerDisplay.classList.remove('draw');
+      stopConfetti();
+      return;
+    }
+
+    if (sumP1 > sumP2) {
+      winnerDisplay.textContent = `${bigP1name.textContent} の勝ち！`;
+      winnerDisplay.classList.remove('draw');
+      startConfetti();
+    } else if (sumP2 > sumP1) {
+      winnerDisplay.textContent = `${bigP2name.textContent} の勝ち！`;
+      winnerDisplay.classList.remove('draw');
+      startConfetti();
+    } else {
+      winnerDisplay.textContent = '引き分け！';
+      winnerDisplay.classList.add('draw');
+      stopConfetti();
+    }
+  }
+
+  // 簡易的なコンフェッティ（演出はダミー。実装していなければ何もしない）
+  function startConfetti() {
+    // ここにコンフェッティ実装があれば呼ぶ
+  }
+  function stopConfetti() {
+    // ここにコンフェッティ停止処理があれば呼ぶ
+  }
+
+  function renderTable() {
+    scoreBody.innerHTML = '';
+    let sumP1 = 0;
+    let sumP2 = 0;
+
+    scores.forEach(s => {
+      const tr = document.createElement('tr');
+      const tdMonth = document.createElement('td');
+      const tdP1 = document.createElement('td');
+      const tdP2 = document.createElement('td');
+      tdMonth.textContent = s.month;
+      tdMonth.style.textAlign = 'center';
+      tdP1.textContent = s.p1;
+      tdP2.textContent = s.p2;
+      tr.appendChild(tdMonth);
+      tr.appendChild(tdP1);
+      tr.appendChild(tdP2);
+      scoreBody.appendChild(tr);
+      sumP1 += s.p1;
+      sumP2 += s.p2;
+    });
+
+    totalP1Cell.textContent = sumP1;
+    totalP2Cell.textContent = sumP2;
+    bigTotalP1.textContent = sumP1;
+    bigTotalP2.textContent = sumP2;
+
+    checkForWinner(sumP1, sumP2);
+  }
+
+  function addScore() {
+    if (currentMonth > totalMonths) {
+      alert('すでに全ての月の記録が完了しています。');
+      return;
+    }
+    const p1 = parseInt(p1input.value, 10) || 0;
+    const p2 = parseInt(p2input.value, 10) || 0;
+
+    scores.push({
+      month: currentMonth,
+      p1: p1,
+      p2: p2
+    });
+
+    currentMonth++;
+    renderTable();
+    updateHeader();
+
+    p1input.value = 0;
+    p2input.value = 0;
+  }
+
+  function undoLast() {
+    if (scores.length === 0) return;
+    scores.pop();
+    currentMonth = Math.max(1, currentMonth - 1);
+    renderTable();
+    updateHeader();
+  }
+
+  function resetAll() {
+    if (!confirm('すべての記録をリセットしますか？')) return;
+    scores = [];
+    currentMonth = 1;
+    renderTable();
+    updateHeader();
+    p1input.value = 0;
+    p2input.value = 0;
+    winnerDisplay.textContent = '';
+    stopConfetti();
+  }
+
+  monthsSelect.addEventListener('change', () => {
+    totalMonths = parseInt(monthsSelect.value, 10);
+    scores = [];
+    currentMonth = 1;
+    renderTable();
+    updateHeader();
+    winnerDisplay.textContent = '';
+    stopConfetti();
+  });
+
+  addBtn.addEventListener('click', addScore);
+  undoBtn.addEventListener('click', undoLast);
+  resetBtn.addEventListener('click', resetAll);
+
+  p1nameInput.addEventListener('input', updatePlayerNames);
+  p2nameInput.addEventListener('input', updatePlayerNames);
+
+  // 花札風＋／－ボタンでスコアを増減させる
+  document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('hana-btn')) return;
+
+    const targetId = e.target.getAttribute('data-target');
+    if (!targetId) return;
+
+    const input = document.getElementById(targetId);
+    if (!input) return;
+
+    const isPlus = e.target.classList.contains('plus-btn');
+
+    const step = Number(input.step) || 1;
+    const min = input.min === '' ? -Infinity : Number(input.min);
+    const max = input.max === '' ?  Infinity : Number(input.max);
+
+    let value = Number(input.value) || 0;
+    value = isPlus ? value + step : value - step;
+
+    if (value < min) value = min;
+    if (value > max) value = max;
+
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  // 初期表示
+  updateHeader();
+  renderTable();
+  updatePlayerNames();
+</script>
+</body>
+</html>

@@ -845,7 +845,9 @@ def new_BusRouting(st, en, points, sp, moveDist):
 #バス停問題
 def BusRouting(st, en, points, sp, moveDist):
     #SHPを解く
-    _a, _b, _c, shp = path_SHP_branch_and_bound_with_queue_MST(st, en, points, sp)
+    base_limit = (len(points)+2)**3 * 0.00002
+    limit = max(base_limit, 0.2)
+    shp = solve_shp_with_ortools(st, en, points, sp, time_limit_sec=limit)
 
     #乗客の移動候補ノードを取得
     candidates = []
